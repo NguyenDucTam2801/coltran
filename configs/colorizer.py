@@ -35,7 +35,7 @@ def get_config():
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
   config.eval_batch_size = 16
-  config.eval_checkpoint_wait_secs = -1
+  config.eval_checkpoint_wait_secs = 1
 
   # loss hparams.
   config.loss_factor = 0.8

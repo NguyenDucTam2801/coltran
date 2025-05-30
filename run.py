@@ -343,8 +343,10 @@ def evaluate(logdir, subset):
   num_examples = config.eval_num_examples
   eval_step = train_utils.step_with_strategy(step_fn, strategy)
   ckpt_path = None
+  # wait_max = config.get(
+  #     'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   wait_max = config.get(
-      'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
+    'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   is_ema = True if ema else False
 
   eval_summary_dir = os.path.join(
