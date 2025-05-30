@@ -343,8 +343,10 @@ def evaluate(logdir, subset):
   num_examples = config.eval_num_examples
   eval_step = train_utils.step_with_strategy(step_fn, strategy)
   ckpt_path = None
+  # wait_max = config.get(
+  #     'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   wait_max = config.get(
-      'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
+    'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   is_ema = True if ema else False
 
   eval_summary_dir = os.path.join(
@@ -352,7 +354,7 @@ def evaluate(logdir, subset):
   writer = tf.summary.create_file_writer(eval_summary_dir)
 
   while True:
-    ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path, wait_max)
+    ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path)
     logging.info(ckpt_path)
     if ckpt_path is None:
       logging.info('Timed out waiting for checkpoint.')
