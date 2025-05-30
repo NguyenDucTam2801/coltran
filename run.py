@@ -354,11 +354,11 @@ def evaluate(logdir, subset):
   writer = tf.summary.create_file_writer(eval_summary_dir)
 
   while True:
-    ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path)
-    logging.info(ckpt_path)
-    if ckpt_path is None:
-      logging.info('Timed out waiting for checkpoint.')
-      break
+    # ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path)
+    # logging.info(ckpt_path)
+    # if ckpt_path is None:
+    #   logging.info('Timed out waiting for checkpoint.')
+    #   break
 
     train_utils.with_strategy(
         lambda: train_utils.restore(model, checkpoints, logdir, ema),
