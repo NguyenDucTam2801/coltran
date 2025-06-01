@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The Google Research Authors.
+# Copyright 2025 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,6 @@ from tensorflow.compat.v2.keras import layers
 from coltran.models import core
 from coltran.models import layers as coltran_layers
 from coltran.utils import base_utils
-from tensorflow.keras import layers
-
 
 
 class ColTranCore(tf.keras.Model):
@@ -115,65 +113,41 @@ class ColTranCore(tf.keras.Model):
     activations = self.final_norm(h_inner)
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
-  
-  def get_color_palette(n_bits=3):
-    num_values = 8  # 8 values per channel (3 bits)
-    # Linearly spaced values from 0 to 255 (8-bit) for each channel
-    channel_values = tf.linspace(0.0, 255.0, num_values)
-    channel_values = tf.round(channel_values)  # Round to nearest integer
-    channel_values = tf.cast(channel_values, tf.int32)  # [0, 36, 73, ..., 255]
-
-    # Generate all combinations of R, G, B values
-    R, G, B = tf.meshgrid(channel_values, channel_values, channel_values, indexing='ij')
-    palette = tf.stack([R, G, B], axis=-1)  # Shape: [8, 8, 8, 3]
-
-    # Flatten to [512, 3] and return
-    return tf.reshape(palette, (-1, 3))
 
   def image_loss(self, logits, labels):
-    """SSIM Loss between predicted and target RGB images."""
-    height, width = labels.shape[1], labels.shape[2]
-    
-    # Get 3-bit color palette [512, 3] and normalize to [0,1]
-    color_palette = self.get_color_palette()
-    color_palette = tf.cast(color_palette, tf.float32) / 255.0
-
-    # Convert logits to RGB predictions [B, H, W, 3]
-    logits = tf.squeeze(logits, axis=-2)  # Remove singleton dim
-    probs = tf.nn.softmax(logits, axis=-1)  # [B, H, W, 512]
-    pred_rgb = tf.tensordot(probs, color_palette, axes=[[-1], [0]])  # [B, H, W, 3]
-
-    # Convert label indices to RGB targets [B, H, W, 3]
-    target_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
-
-    # Compute SSIM loss (higher SSIM = better → loss = 1 - SSIM)
-    ssim_score = tf.image.ssim(
-        img1=pred_rgb,
-        img2=target_rgb,
-        max_val=1.0,  # Images normalized to [0,1]
-        filter_size=11  # Standard window size
-    )
-    ssim_loss = 1.0 - tf.reduce_mean(ssim_score)
-    return ssim_loss
+    """Cross-entropy between the logits and labels."""
+    height, width = labels.shape[1:3]
+    logits = tf.squeeze(logits, axis=-2)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss, axis=0)
+    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+    return loss / (height * width)
 
   def loss(self, targets, logits, train_config, training, aux_output=None):
-    """Computes SSIM loss for autoregressive stage."""
-    # Preprocess labels (same as original)
+    """Converts targets to coarse colors and computes log-likelihood."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
-    
-    # Quantize labels to 3-bit bins
+    if downsample:
+      labels = targets['targets_%d' % downsample_res]
+    else:
+      labels = targets['targets']
+
+    if aux_output is None:
+      aux_output = {}
+
+    # quantize labels.
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
+
+    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    # Compute SSIM loss
     loss = self.image_loss(logits, labels)
-    
-    # Optional: Auxiliary encoder loss
-    enc_logits = aux_output.get('encoder_logits') 
-    enc_loss = self.image_loss(enc_logits, labels)
+    enc_logits = aux_output.get('encoder_logits')
+    if enc_logits is None:
+      return loss, {}
 
+    enc_loss = self.image_loss(enc_logits, labels)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
@@ -322,97 +296,3 @@ class ColTranCore(tf.keras.Model):
     image = base_utils.convert_bits(image, n_bits_in=3, n_bits_out=8)
     image = tf.cast(image, dtype=tf.uint8)
     return image
-  
-class Discriminator(tf.keras.Model):
-    """PatchGAN discriminator for adversarial training."""
-    def __init__(self):
-        super().__init__()
-        self.model = tf.keras.Sequential([
-            layers.Conv2D(64, 4, strides=2, padding='same', activation='leaky_relu'),
-            layers.Conv2D(128, 4, strides=2, padding='same', activation='leaky_relu'),
-            layers.Conv2D(256, 4, strides=2, padding='same', activation='leaky_relu'),
-            layers.Conv2D(1, 4, strides=1, padding='same')  # Output: [B, H/8, W/8, 1]
-        ])
-
-    def call(self, x):
-        return self.model(x)
-
-class CustomLoss:
-    def get_color_palette(n_bits=3):
-      num_values = 8  # 8 values per channel (3 bits)
-      # Linearly spaced values from 0 to 255 (8-bit) for each channel
-      channel_values = tf.linspace(0.0, 255.0, num_values)
-      channel_values = tf.round(channel_values)  # Round to nearest integer
-      channel_values = tf.cast(channel_values, tf.int32)  # [0, 36, 73, ..., 255]
-
-      # Generate all combinations of R, G, B values
-      R, G, B = tf.meshgrid(channel_values, channel_values, channel_values, indexing='ij')
-      palette = tf.stack([R, G, B], axis=-1)  # Shape: [8, 8, 8, 3]
-
-      # Flatten to [512, 3] and return
-      return tf.reshape(palette, (-1, 3))
-    
-    def __init__(self):
-        self.discriminator = Discriminator()
-        self.bce_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-        self.color_palette = self.get_color_palette()  # [512, 3]
-        self.num_symbols_per_channel = 2**3
-
-    def image_loss(self, logits, labels):
-        """Adversarial loss + optional content loss."""
-        # Convert logits to RGB images
-        logits = tf.squeeze(logits, axis=-2)  # [B, H, W, 512]
-        probs = tf.nn.softmax(logits, axis=-1)
-        gen_images = tf.tensordot(probs, tf.cast(self.color_palette, tf.float32), axes=[[-1], [0]])  # [B, H, W, 3]
-
-        # Convert labels to RGB (real images)
-        real_images = tf.gather(self.color_palette, labels)  # [B, H, W, 3]
-
-        # Discriminator outputs
-        d_real = self.discriminator(tf.cast(real_images, tf.float32))
-        d_fake = self.discriminator(tf.cast(gen_images, tf.float32))
-
-        # Generator loss: maximize log(D(fake))
-        g_loss = self.bce_loss(tf.ones_like(d_fake), d_fake)
-
-        # Optional: Add content loss (e.g., L1) for stability
-        l1_loss = tf.reduce_mean(tf.abs(gen_images - tf.cast(real_images, tf.float32)))
-        total_loss = g_loss + 10.0 * l1_loss  # Weighted combination
-
-        return total_loss
-
-    def discriminator_loss(self, logits, labels):
-        """Separate discriminator loss (call this in training loop)."""
-        # Rebuild RGB images (same as above)
-        logits = tf.squeeze(logits, axis=-2)
-        probs = tf.nn.softmax(logits, axis=-1)
-        gen_images = tf.tensordot(probs, self.color_palette, axes=[-1])
-        real_images = tf.gather(self.color_palette, labels)
-
-        # Discriminator outputs
-        d_real = self.discriminator(real_images)
-        d_fake = self.discriminator(gen_images)
-
-        # Discriminator loss
-        real_loss = self.bce_loss(tf.ones_like(d_real), d_real)
-        fake_loss = self.bce_loss(tf.zeros_like(d_fake), d_fake)
-        return 0.5 * (real_loss + fake_loss)
-
-    def loss(self, targets, logits, train_config, training, aux_output=None):
-        """Adversarial loss for generator."""
-        # Preprocess labels (same as original)
-        downsample = train_config.get('downsample', False)
-        downsample_res = train_config.get('downsample_res', 64)
-        labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
-        labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
-        labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
-
-        # Generator loss
-        loss = self.image_loss(logits, labels)
-        
-        # Optional: Auxiliary encoder loss
-        enc_logits = aux_output.get('encoder_logits')
-        enc_loss = self.image_loss(enc_logits, labels)
-
-        return loss, {'encoder': enc_loss}
-      
