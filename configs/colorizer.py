@@ -22,7 +22,7 @@ def get_config():
   config = ConfigDict()
 
   # Data.
-  config.dataset = 'imagenet'
+  config.dataset = 'custom'
   config.downsample = True
   config.downsample_res = 64
   config.resolution = [256, 256]

@@ -79,6 +79,20 @@ class ColTranCore(tf.keras.Model):
         units=self.num_symbols, name='auto_logits')
     self.final_norm = layers.LayerNormalization()
 
+  def get_color_palette(self, n_bits=3):
+    num_values = 8  # 8 values per channel (3 bits)
+    # Linearly spaced values from 0 to 255 (8-bit) for each channel
+    channel_values = tf.linspace(0.0, 255.0, num_values)
+    channel_values = tf.round(channel_values)  # Round to nearest integer
+    channel_values = tf.cast(channel_values, tf.int32)  # [0, 36, 73, ..., 255]
+
+    # Generate all combinations of R, G, B values
+    R, G, B = tf.meshgrid(channel_values, channel_values, channel_values, indexing='ij')
+    palette = tf.stack([R, G, B], axis=-1)  # Shape: [8, 8, 8, 3]
+
+    # Flatten to [512, 3] and return
+    return tf.reshape(palette, (-1, 3))
+  
   def call(self, inputs, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     gray = tf.image.rgb_to_grayscale(inputs)
@@ -119,7 +133,7 @@ class ColTranCore(tf.keras.Model):
     height, width = labels.shape[1], labels.shape[2]
     
     # Get 3-bit color palette [512, 3]
-    color_palette = base_utils.get_color_palette(n_bits=3)  # Shape: [512, 3]
+    color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
     color_palette = tf.cast(color_palette, tf.float32) / 255.0  # Normalize to [0,1]
 
     # Convert logits to RGB predictions [B, H, W, 3]
@@ -149,8 +163,8 @@ class ColTranCore(tf.keras.Model):
     loss = self.image_loss(logits, labels)
     
     # Optional: Auxiliary encoder loss
-    enc_logits = aux_output.get('encoder_logits') if aux_output else None
-    enc_loss = self.image_loss(enc_logits, labels) if enc_logits else 0.0
+    enc_logits = aux_output.get('encoder_logits')
+    enc_loss = self.image_loss(enc_logits, labels)
 
     return loss, {'encoder': enc_loss}
 
