@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The Google Research Authors.
+# Copyright 2025 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ def get_config():
   config = ConfigDict()
 
   # Data.
-  config.dataset = 'custom'
+  config.dataset = 'imagenet'
   config.downsample = True
   config.downsample_res = 64
   config.resolution = [256, 256]
@@ -35,11 +35,11 @@ def get_config():
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
   config.eval_batch_size = 16
-  config.eval_checkpoint_wait_secs = 1
+  config.eval_checkpoint_wait_secs = -1
 
   # loss hparams.
-  config.loss_factor = 0.8
-  config.encoder_loss_factor = 0.2
+  config.loss_factor = 0.99
+  config.encoder_loss_factor = 0.01
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'rmsprop'

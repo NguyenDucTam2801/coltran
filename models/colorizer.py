@@ -115,39 +115,43 @@ class ColTranCore(tf.keras.Model):
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
-    """Cross-entropy between the logits and labels."""
-    height, width = labels.shape[1:3]
-    logits = tf.squeeze(logits, axis=-2)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
-    loss = tf.reduce_mean(loss, axis=0)
-    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
-    return loss / (height * width)
+    """L1 Loss between predicted and target RGB values."""
+    height, width = labels.shape[1], labels.shape[2]
+    
+    # Get 3-bit color palette [512, 3]
+    color_palette = base_utils.get_color_palette(n_bits=3)  # Shape: [512, 3]
+    color_palette = tf.cast(color_palette, tf.float32) / 255.0  # Normalize to [0,1]
+
+    # Convert logits to RGB predictions [B, H, W, 3]
+    logits = tf.squeeze(logits, axis=-2)  # Remove singleton dim (if exists)
+    probs = tf.nn.softmax(logits, axis=-1)  # [B, H, W, 512]
+    pred_rgb = tf.tensordot(probs, color_palette, axes=[[-1], [0]])  # [B, H, W, 3]
+
+    # Convert label indices to RGB targets [B, H, W, 3]
+    target_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
+
+    # Compute L1 loss
+    l1_loss = tf.reduce_mean(tf.abs(pred_rgb - target_rgb))
+    return l1_loss
 
   def loss(self, targets, logits, train_config, training, aux_output=None):
-    """Converts targets to coarse colors and computes log-likelihood."""
+    """Computes L1 loss for autoregressive stage."""
+    # Preprocess labels (same as original)
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    if downsample:
-      labels = targets['targets_%d' % downsample_res]
-    else:
-      labels = targets['targets']
-
-    if aux_output is None:
-      aux_output = {}
-
-    # quantize labels.
+    labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
+    
+    # Quantize labels to 3-bit bins
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
-
-    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
+    # Compute L1 loss
     loss = self.image_loss(logits, labels)
-    enc_logits = aux_output.get('encoder_logits')
-    if enc_logits is None:
-      return loss, {}
+    
+    # Optional: Auxiliary encoder loss
+    enc_logits = aux_output.get('encoder_logits') if aux_output else None
+    enc_loss = self.image_loss(enc_logits, labels) if enc_logits else 0.0
 
-    enc_loss = self.image_loss(enc_logits, labels)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
