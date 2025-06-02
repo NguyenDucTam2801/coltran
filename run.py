@@ -317,7 +317,7 @@ def evaluate(logdir, subset):
         data_dir=FLAGS.data_dir)
 
   model, optimizer, ema = train_utils.with_strategy(
-      lambda: build(config, batch_size, False), strategy)
+      lambda: build(config, batch_size, True), strategy)
 
   metric_keys = ['loss', 'total_loss']
   # metric_keys += model.metric_keys
