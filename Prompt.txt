@@ -1,8 +1,8 @@
-python -m coltran.custom_colorize --config=coltran/configs/colorizer.py --logdir=coltran/coltran_models/coltran/colorizer --img_dir=coltran/input_images --store_dir=coltran/output_images --mode=colorize --accelerator_type=CPU 
+    python -m coltran.custom_colorize --config=coltran/configs/colorizer.py --logdir=coltran/coltran_models/coltran/colorizer --img_dir=coltran/input_images --store_dir=coltran/output_images --mode=colorize --accelerator_type=CPU
 && python -m coltran.custom_colorize --config=coltran/configs/color_upsampler.py --logdir=coltran/coltran_models/coltran/color_upsampler --img_dir=coltran/input_images --store_dir=coltran/output_images --gen_data_dir=coltran/output_images/stage1 --mode=colorize --accelerator_type=CPU&& python -m coltran.custom_colorize --config=coltran/configs/spatial_upsampler.py --logdir=coltran/coltran_models/coltran/spatial_upsampler --img_dir=coltran/input_images --store_dir=coltran/output_images --gen_data_dir=coltran/output_images/stage2 --mode=colorize --accelerator_type=CPU
 cd /d F:\anaconda_projects
 cd /d F:\anaconda_projects\coltran\coltran
 activate tf
-python -m coltran.run --config=coltran/configs/colorizer.py --mode=eval_train --pretrain_dir="./coltran/coltran" --dataset=custom --data_dir="./coltran/ILSVRC2012_img_train_t3/n02085620" --accelerator_type=CPU --dataset=custom
+python -m coltran.run --config=coltran/configs/colorizer.py --mode=train --pretrain_dir="../tmp/svt" --dataset=custom --data_dir="./coltran/ILSVRC2012_img_train_t3/n02085620" --accelerator_type=CPU --dataset=custom --steps_per_summaries=1 --devices_per_worker=8
 python -m tensorflow.python.tools.inspect_checkpoint --file_name="./model-1" --all_tensors=false
 python -m coltran.sample --config=coltran/configs/colorizer.py --mode=sample_test --logdir=coltran/coltran_models/coltran/colorizer

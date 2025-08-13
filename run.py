@@ -100,8 +100,8 @@ def loss_on_batch(inputs, model, config, training=False):
       targets=inputs, logits=logits, train_config=config, training=training,
       aux_output=aux_output)
   loss_factor = config.get('loss_factor', 1.0)
-  print("Loss:", loss)
-  print("Auxiliary Loss Dictionary:", aux_loss_dict)
+  # print("Loss:", loss)
+  # print("Auxiliary Loss Dictionary:", aux_loss_dict)
   loss_dict = collections.OrderedDict()
   loss_dict['loss'] = loss
   total_loss = loss_factor * loss

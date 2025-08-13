@@ -25,12 +25,13 @@ def get_config():
   config.dataset = 'custom'
   config.downsample = True
   config.downsample_res = 64
-  config.resolution = [256, 256]
+  config.resolution = [512, 512]
 
   # Training.
   config.batch_size = 7
   config.max_train_steps = 450000
-  config.save_checkpoint_secs = 900
+  # config.save_checkpoint_secs = 900
+  config.save_checkpoint_secs = 180
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000

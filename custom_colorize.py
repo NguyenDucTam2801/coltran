@@ -117,6 +117,7 @@ def create_grayscale_dataset_from_images(image_dir, batch_size):
   def load_and_preprocess_image(path, child_path):
     image_str = tf.io.read_file(path)
     num_channels = 1 if FLAGS.mode == 'colorize' else 3
+    """Recolorize -> num channels = 3 OR Colorize BW img -> num channel = 1"""
     image = tf.image.decode_image(image_str, channels=num_channels)
 
     # Central crop to square and resize to 256x256.
@@ -218,7 +219,7 @@ def main(_):
       prev_gen = next(gen_dataset_iter)
 
     if model_name == 'coltran_core':
-      visualizer.visualize_coltran_stage(gray_64,"grayscale_low")
+      # visualizer.visualize_coltran_stage(gray_64,"grayscale_low")
       out = model.sample(gray_64, mode='sample')
       samples = out['auto_sample']
     elif model_name == 'color_upsampler':

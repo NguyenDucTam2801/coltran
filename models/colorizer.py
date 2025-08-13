@@ -79,20 +79,6 @@ class ColTranCore(tf.keras.Model):
         units=self.num_symbols, name='auto_logits')
     self.final_norm = layers.LayerNormalization()
 
-  def get_color_palette(self, n_bits=3):
-    num_values = 8  # 8 values per channel (3 bits)
-    # Linearly spaced values from 0 to 255 (8-bit) for each channel
-    channel_values = tf.linspace(0.0, 255.0, num_values)
-    channel_values = tf.round(channel_values)  # Round to nearest integer
-    channel_values = tf.cast(channel_values, tf.int32)  # [0, 36, 73, ..., 255]
-
-    # Generate all combinations of R, G, B values
-    R, G, B = tf.meshgrid(channel_values, channel_values, channel_values, indexing='ij')
-    palette = tf.stack([R, G, B], axis=-1)  # Shape: [8, 8, 8, 3]
-
-    # Flatten to [512, 3] and return
-    return tf.reshape(palette, (-1, 3))
-  
   def call(self, inputs, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     gray = tf.image.rgb_to_grayscale(inputs)
@@ -129,43 +115,39 @@ class ColTranCore(tf.keras.Model):
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
-    """L1 Loss between predicted and target RGB values."""
-    height, width = labels.shape[1], labels.shape[2]
-    
-    # Get 3-bit color palette [512, 3]
-    color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
-    color_palette = tf.cast(color_palette, tf.float32) / 255.0  # Normalize to [0,1]
-
-    # Convert logits to RGB predictions [B, H, W, 3]
-    logits = tf.squeeze(logits, axis=-2)  # Remove singleton dim (if exists)
-    probs = tf.nn.softmax(logits, axis=-1)  # [B, H, W, 512]
-    pred_rgb = tf.tensordot(probs, color_palette, axes=[[-1], [0]])  # [B, H, W, 3]
-
-    # Convert label indices to RGB targets [B, H, W, 3]
-    target_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
-
-    # Compute L1 loss
-    l1_loss = tf.reduce_mean(tf.abs(pred_rgb - target_rgb))
-    return l1_loss
+    """Cross-entropy between the logits and labels."""
+    height, width = labels.shape[1:3]
+    logits = tf.squeeze(logits, axis=-2)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss, axis=0)
+    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+    return loss / (height * width)
 
   def loss(self, targets, logits, train_config, training, aux_output=None):
-    """Computes L1 loss for autoregressive stage."""
-    # Preprocess labels (same as original)
+    """Converts targets to coarse colors and computes log-likelihood."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
-    
-    # Quantize labels to 3-bit bins
+    if downsample:
+      labels = targets['targets_%d' % downsample_res]
+    else:
+      labels = targets['targets']
+
+    if aux_output is None:
+      aux_output = {}
+
+    # quantize labels.
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
+
+    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    # Compute L1 loss
     loss = self.image_loss(logits, labels)
-    
-    # Optional: Auxiliary encoder loss
     enc_logits = aux_output.get('encoder_logits')
-    enc_loss = self.image_loss(enc_logits, labels)
+    if enc_logits is None:
+      return loss, {}
 
+    enc_loss = self.image_loss(enc_logits, labels)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
