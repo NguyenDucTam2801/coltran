@@ -84,6 +84,7 @@ from coltran.models import upsampler
 from coltran.utils import base_utils
 from coltran.utils import datasets_utils
 from coltran.utils import train_utils
+import sys
 
 
 flags.DEFINE_string('img_dir', None,
@@ -184,6 +185,7 @@ def get_store_dir(name, store_dir):
 
 def main(_):
   print(f"Is GPU available: {tf.config.list_physical_devices('GPU')}")
+  print(f"sys.version: {sys.version}")
   config, store_dir, img_dir = FLAGS.config, FLAGS.store_dir, FLAGS.img_dir
   assert store_dir is not None
   assert img_dir is not None
