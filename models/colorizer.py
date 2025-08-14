@@ -161,7 +161,6 @@ class ColTranCore(tf.keras.Model):
 
   def sample(self, gray_cond, mode='argmax'):
     output = {}
-    print(f"gray_cond: {gray_cond.shape}")
     z_gray = self.encoder(gray_cond)
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
