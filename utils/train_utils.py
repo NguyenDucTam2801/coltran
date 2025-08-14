@@ -81,11 +81,31 @@ def build_optimizer(config):
   return optimizer
 
 
+# def build_ema(config, ema_vars):
+#   """Builds exponential moving average."""
+#   ema = None
+#   polyak_decay = config.get('polyak_decay', 0.0)
+#   if polyak_decay:
+#     ema = tf.train.ExponentialMovingAverage(polyak_decay)
+#     ema.apply(ema_vars)
+#     logging.info('Built with exponential moving average.')
+#   return ema
+
 def build_ema(config, ema_vars):
   """Builds exponential moving average."""
   ema = None
   polyak_decay = config.get('polyak_decay', 0.0)
   if polyak_decay:
+    # --- DEBUGGING BLOCK ---
+    faulty_vars = []
+    for i, var in enumerate(ema_vars):
+        if not hasattr(var, 'dtype'):
+            print(f"ERROR: Element at index {i} is not a variable. It is a {type(var)} with value: {var}")
+            faulty_vars.append(var)
+    if faulty_vars:
+        raise TypeError(f"Found non-variable elements in ema_vars: {faulty_vars}")
+    # --- END DEBUGGING BLOCK ---
+
     ema = tf.train.ExponentialMovingAverage(polyak_decay)
     ema.apply(ema_vars)
     logging.info('Built with exponential moving average.')
