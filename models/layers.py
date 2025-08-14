@@ -200,6 +200,7 @@ class PositionEmbed(layers.Layer):
 
   def call(self, inputs):
     out = inputs
+    # print(f"Out: {out.shape}")
     for e in self.embeddings:
       out += e
     return out

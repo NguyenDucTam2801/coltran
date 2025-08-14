@@ -111,7 +111,6 @@ config_flags.DEFINE_config_file(
     help_string='Training configuration file.')
 FLAGS = flags.FLAGS
 
-
 def create_grayscale_dataset_from_images(image_dir, batch_size):
   """Creates a dataset of grayscale images from the input image directory."""
   def load_and_preprocess_image(path, child_path):
@@ -125,6 +124,7 @@ def create_grayscale_dataset_from_images(image_dir, batch_size):
 
     # Resize to a low resolution image.
     image_64 = datasets_utils.change_resolution(image, res=64)
+    # image_64=image
     if FLAGS.mode == 'recolorize':
       image = tf.image.rgb_to_grayscale(image)
       image_64 = tf.image.rgb_to_grayscale(image_64)
@@ -183,6 +183,7 @@ def get_store_dir(name, store_dir):
 
 
 def main(_):
+  print(f"Is GPU available: {tf.test.is_gpu_available()}")
   config, store_dir, img_dir = FLAGS.config, FLAGS.store_dir, FLAGS.img_dir
   assert store_dir is not None
   assert img_dir is not None
@@ -211,6 +212,7 @@ def main(_):
 
   num_epochs = int(np.ceil(num_files / batch_size))
   logging.info(num_epochs)
+
 
   for _ in range(num_epochs):
     gray, gray_64, child_paths = next(dataset_iter)

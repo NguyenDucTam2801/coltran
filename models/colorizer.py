@@ -161,8 +161,8 @@ class ColTranCore(tf.keras.Model):
 
   def sample(self, gray_cond, mode='argmax'):
     output = {}
-
-    z_gray = self.encoder(gray_cond, training=False)
+    print(f"gray_cond: {gray_cond.shape}")
+    z_gray = self.encoder(gray_cond)
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)

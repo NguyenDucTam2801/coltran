@@ -22,16 +22,15 @@ def get_config():
   config = ConfigDict()
 
   # Data.
-  config.dataset = 'custom'
+  config.dataset = 'imagenet'
   config.downsample = True
-  config.downsample_res = 64
-  config.resolution = [512, 512]
+  config.downsample_res = 256
+  config.resolution = [256, 256]
 
   # Training.
   config.batch_size = 7
   config.max_train_steps = 450000
-  # config.save_checkpoint_secs = 900
-  config.save_checkpoint_secs = 180
+  config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
