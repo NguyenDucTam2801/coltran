@@ -73,11 +73,11 @@ def build_optimizer(config):
   optim_config = dict(config.optimizer)
   optim_type = optim_config.pop('type', 'rmsprop')
   if optim_type == 'rmsprop':
-    optimizer = tf.keras.optimizers.legacy.RMSprop(**optim_config)
+    optimizer = tf.keras.optimizers.RMSprop(**optim_config)
   elif optim_type == 'adam':
-    optimizer = tf.keras.optimizers.legacy.Adam(**optim_config)
+    optimizer = tf.keras.optimizers.Adam(**optim_config)
   elif optim_type == 'sgd':
-    optimizer = tf.keras.optimizers.legacy.SGD(**optim_config)
+    optimizer = tf.keras.optimizers.SGD(**optim_config)
   else:
     raise ValueError('Unknown optimizer %s.' % optim_type)
   return optimizer
@@ -88,16 +88,25 @@ def build_ema(config, ema_vars):
   ema = None
   polyak_decay = config.get('polyak_decay', 0.0)
   print(f"ema_vars{type(ema_vars[0])}")
+  print(f"Is it an instance of tf.Variable? {isinstance(ema_vars[0], tf.Variable)}")
+  tf_ema_vars = []
   if polyak_decay:
-    # wrapped_ema_vars = []
-    # for var in ema_vars:
-    #   # We only need to wrap floating point variables.
-    #   if tf.as_dtype(var.dtype).is_floating:
-    #     wrapped_ema_vars.append(EmaVariableWrapper(var))
-    # print(f"float_ema_vars: {wrapped_ema_vars[0]}")
-    ema = tf.train.ExponentialMovingAverage(polyak_decay)
-    ema.apply(ema_vars)
-    logging.info('Built with exponential moving average.')
+    for var in ema_vars:
+      # Check for the backend-specific variable attribute
+      if hasattr(var, 'value') and isinstance(var.value, tf.Variable):
+        tf_var = var.value
+      elif hasattr(var, '_tf_variable') and isinstance(var._tf_variable, tf.Variable):
+        tf_var = var._tf_variable
+      else:
+        # If it's not a wrapper, it might already be a tf.Variable (for older Keras versions)
+        tf_var = var
+
+      # Now that we have the real tf.Variable, we can check its dtype and append.
+      if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
+        tf_ema_vars.append(tf_var)
+  print(f"tf_ema_vars: {tf_ema_vars}")
+  ema = tf.train.ExponentialMovingAverage(polyak_decay)
+  ema.apply(tf_ema_vars)
   return ema
 
 
