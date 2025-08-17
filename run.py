@@ -185,6 +185,7 @@ def build(config, batch_size, is_train=False):
 ## Train.
 ###############################################################################
 def train(logdir):
+  print(f"Is GPU available: {tf.test.is_gpu_available()}")
   config = FLAGS.config
   steps_per_write = FLAGS.steps_per_summaries
   train_utils.write_config(config, logdir)

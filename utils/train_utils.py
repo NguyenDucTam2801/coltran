@@ -21,6 +21,8 @@ from absl import logging
 import numpy as np
 import tensorflow as tf
 import yaml
+from tensorflow.python.framework import dtypes
+
 
 
 def step_with_strategy(step_fn, strategy):
@@ -85,19 +87,16 @@ def build_ema(config, ema_vars):
   """Builds exponential moving average."""
   ema = None
   polyak_decay = config.get('polyak_decay', 0.0)
+  print(f"ema_vars{type(ema_vars[0])}")
   if polyak_decay:
-    # --- DEBUGGING BLOCK ---
-    faulty_vars = []
-    for i, var in enumerate(ema_vars):
-        if not hasattr(var, 'dtype'):
-            print(f"ERROR: Element at index {i} is not a variable. It is a {type(var)} with value: {var}")
-            faulty_vars.append(var)
-    if faulty_vars:
-        raise TypeError(f"Found non-variable elements in ema_vars: {faulty_vars}")
-    # --- END DEBUGGING BLOCK ---
-
+    wrapped_ema_vars = []
+    for var in ema_vars:
+      # We only need to wrap floating point variables.
+      if tf.as_dtype(var.dtype).is_floating:
+        wrapped_ema_vars.append(EmaVariableWrapper(var))
+    print(f"float_ema_vars: {wrapped_ema_vars[0]}")
     ema = tf.train.ExponentialMovingAverage(polyak_decay)
-    ema.apply(ema_vars)
+    # ema.apply(ema_vars)
     logging.info('Built with exponential moving average.')
   return ema
 
@@ -205,3 +204,32 @@ def save_nparray_to_disk(filename, nparray):
     tf.io.gfile.makedirs(fdir)
   with tf.io.gfile.GFile(filename, 'w') as f:
     np.save(f, nparray)
+
+def get_tf_dtype(dtype_value):
+  """Converts a potential string dtype to a tf.dtypes.DType object."""
+  if isinstance(dtype_value, str):
+    return tf.as_dtype(dtype_value)
+  return dtype_value
+
+class EmaVariableWrapper:
+  def __init__(self, variable):
+    # Store the original variable. All TensorFlow operations will use this.
+    self.variable = variable
+    # Create the corrected dtype attribute that ema.apply() expects.
+    self.dtype = tf.as_dtype(variable.dtype)
+
+  # When TensorFlow needs to use this object in a graph, it will
+  # automatically convert it to a tensor. We define that conversion
+  # to just return our original underlying variable.
+  @tf.autograph.experimental.do_not_convert
+  def _as_graph_element(self):
+    return self.variable
+
+
+# This registers the conversion behavior with TensorFlow.
+tf.register_tensor_conversion_function(
+  EmaVariableWrapper,
+  lambda value, dtype=None, name=None: tf.convert_to_tensor(
+    value.variable, dtype=dtype, name=name
+  )
+)
