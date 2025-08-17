@@ -73,11 +73,11 @@ def build_optimizer(config):
   optim_config = dict(config.optimizer)
   optim_type = optim_config.pop('type', 'rmsprop')
   if optim_type == 'rmsprop':
-    optimizer = tf.keras.optimizers.RMSprop(**optim_config)
+    optimizer = tf.keras.optimizers.legacy.RMSprop(**optim_config)
   elif optim_type == 'adam':
-    optimizer = tf.keras.optimizers.Adam(**optim_config)
+    optimizer = tf.keras.optimizers.legacy.Adam(**optim_config)
   elif optim_type == 'sgd':
-    optimizer = tf.keras.optimizers.SGD(**optim_config)
+    optimizer = tf.keras.optimizers.legacy.SGD(**optim_config)
   else:
     raise ValueError('Unknown optimizer %s.' % optim_type)
   return optimizer
@@ -89,14 +89,14 @@ def build_ema(config, ema_vars):
   polyak_decay = config.get('polyak_decay', 0.0)
   print(f"ema_vars{type(ema_vars[0])}")
   if polyak_decay:
-    wrapped_ema_vars = []
-    for var in ema_vars:
-      # We only need to wrap floating point variables.
-      if tf.as_dtype(var.dtype).is_floating:
-        wrapped_ema_vars.append(EmaVariableWrapper(var))
-    print(f"float_ema_vars: {wrapped_ema_vars[0]}")
+    # wrapped_ema_vars = []
+    # for var in ema_vars:
+    #   # We only need to wrap floating point variables.
+    #   if tf.as_dtype(var.dtype).is_floating:
+    #     wrapped_ema_vars.append(EmaVariableWrapper(var))
+    # print(f"float_ema_vars: {wrapped_ema_vars[0]}")
     ema = tf.train.ExponentialMovingAverage(polyak_decay)
-    # ema.apply(ema_vars)
+    ema.apply(ema_vars)
     logging.info('Built with exponential moving average.')
   return ema
 

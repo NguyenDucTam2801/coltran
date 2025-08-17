@@ -160,7 +160,7 @@ def build_model(config):
     model(inputs=zero, inputs_slice=zero_slice, training=False)
 
   ema_vars = model.trainable_variables
-  # ema = train_utils.build_ema(config, ema_vars)
+  ema = train_utils.build_ema(config, ema_vars)
   ema=None
   return model, optimizer, ema
 

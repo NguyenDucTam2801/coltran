@@ -24,7 +24,7 @@ def get_config():
   # Data.
   config.dataset = 'imagenet'
   config.downsample = True
-  config.downsample_res = 256
+  config.downsample_res = 64
   config.resolution = [256, 256]
 
   # Training.
