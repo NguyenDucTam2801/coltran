@@ -202,7 +202,7 @@ def train(logdir):
   strategy, batch_size = train_utils.setup_strategy(
       config, FLAGS.master,
       FLAGS.devices_per_worker, FLAGS.mode, FLAGS.accelerator_type)
-
+  print(f"Batch size: {batch_size}")
   def input_fn(input_context=None):
     read_config = None
     if input_context is not None:
