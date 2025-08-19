@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The Google Research Authors.
+# Copyright 2025 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,17 +91,12 @@ def is_tpu():
 
 def loss_on_batch(inputs, model, config, training=False):
   """Loss on a batch of inputs."""
+  # print(f"Model Coltran: {model.loss}")
   logits, aux_output = model.get_logits(
       inputs_dict=inputs, train_config=config, training=training)
-  # loss, aux_loss_dict = model.loss(
-  #     targets=inputs, logits=logits, train_config=config, training=training,
-  #     aux_output=aux_output)
-  loss, aux_loss_dict = model.loss(
-      targets=inputs, logits=logits, train_config=config, training=training,
-      aux_output=aux_output)
+  loss, aux_loss_dict = model.compute_loss(targets=inputs, logits=logits, train_config=config, training=training,aux_output=aux_output)
   loss_factor = config.get('loss_factor', 1.0)
-  # print("Loss:", loss)
-  # print("Auxiliary Loss Dictionary:", aux_loss_dict)
+
   loss_dict = collections.OrderedDict()
   loss_dict['loss'] = loss
   total_loss = loss_factor * loss
@@ -128,7 +123,6 @@ def train_step(config,
 
   def step_fn(inputs):
     """Per-Replica StepFn."""
-    print("Inputs:", inputs)
     with tf.GradientTape() as tape:
       loss, extra = loss_on_batch(inputs, model, config, training=True)
       scaled_loss = loss
@@ -141,7 +135,22 @@ def train_step(config,
       metric.update_state(extra['scalar'][metric_key])
 
     if ema is not None:
-      ema.apply(model.trainable_variables)
+      tf_ema_vars = []
+      ema_vars = model.trainable_variables
+      for var in ema_vars:
+        # Check for the backend-specific variable attribute
+        if hasattr(var, 'value') and isinstance(var.value, tf.Variable):
+          tf_var = var.value
+        elif hasattr(var, '_tf_variable') and isinstance(var._tf_variable, tf.Variable):
+          tf_var = var._tf_variable
+        else:
+          # If it's not a wrapper, it might already be a tf.Variable (for older Keras versions)
+          tf_var = var
+
+        # Now that we have the real tf.Variable, we can check its dtype and append.
+        if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
+          tf_ema_vars.append(tf_var)
+      ema.apply(tf_ema_vars)
     return loss
 
   return train_utils.step_with_strategy(step_fn, strategy)
@@ -149,7 +158,6 @@ def train_step(config,
 
 def build(config, batch_size, is_train=False):
   optimizer = train_utils.build_optimizer(config)
-  ema_vars = []
 
   downsample = config.get('downsample', False)
   downsample_res = config.get('downsample_res', 64)
@@ -161,6 +169,8 @@ def build(config, batch_size, is_train=False):
     zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
+    print(f"model: {model}")
+
 
   c = 1 if is_train else 3
   if config.model.name == 'color_upsampler':
@@ -185,7 +195,6 @@ def build(config, batch_size, is_train=False):
 ## Train.
 ###############################################################################
 def train(logdir):
-  print(f"Is GPU available: {tf.test.is_gpu_available()}")
   config = FLAGS.config
   steps_per_write = FLAGS.steps_per_summaries
   train_utils.write_config(config, logdir)
@@ -193,8 +202,6 @@ def train(logdir):
   strategy, batch_size = train_utils.setup_strategy(
       config, FLAGS.master,
       FLAGS.devices_per_worker, FLAGS.mode, FLAGS.accelerator_type)
-  print("Strategy: ", strategy)
-  print("Batch size: ", batch_size)
 
   def input_fn(input_context=None):
     read_config = None
@@ -221,16 +228,15 @@ def train(logdir):
       lambda: build(config, batch_size, True), strategy)
   model.summary(120, print_fn=logging.info)
 
+
   # METRIC CREATION.
   metrics = {}
   metric_keys = ['loss', 'total_loss']
   metric_keys += model.metric_keys
-  print("Metric Keys:", metric_keys)  # Add this line to print the metric keys
   for metric_key in metric_keys:
     func = functools.partial(tf.keras.metrics.Mean, metric_key)
     curr_metric = train_utils.with_strategy(func, strategy)
     metrics[metric_key] = curr_metric
-    print(f"Metric Key: {metric_key}, Metric Object: {curr_metric}")
 
   # CHECKPOINTING LOGIC.
   if FLAGS.pretrain_dir is not None:
@@ -275,7 +281,7 @@ def train(logdir):
     num_train_steps = optimizer.iterations
 
     for metric_key in metric_keys:
-      metrics[metric_key].reset_states()
+      metrics[metric_key].reset_state()
 
     start_run = time.time()
 
@@ -314,11 +320,10 @@ def evaluate(logdir, subset):
         name=config.dataset,
         config=config,
         batch_size=config.eval_batch_size,
-        subset=subset,
-        data_dir=FLAGS.data_dir)
+        subset=subset)
 
   model, optimizer, ema = train_utils.with_strategy(
-      lambda: build(config, batch_size, True), strategy)
+      lambda: build(config, batch_size, False), strategy)
 
   metric_keys = ['loss', 'total_loss']
   # metric_keys += model.metric_keys
@@ -334,7 +339,7 @@ def evaluate(logdir, subset):
   dataset = train_utils.dataset_with_strategy(input_fn, strategy)
 
   def step_fn(batch):
-    loss, extra = loss_on_batch(batch, model, config, training=False)
+    _, extra = loss_on_batch(batch, model, config, training=False)
 
     for metric_key in metric_keys:
       curr_metric = metrics[metric_key]
@@ -344,10 +349,8 @@ def evaluate(logdir, subset):
   num_examples = config.eval_num_examples
   eval_step = train_utils.step_with_strategy(step_fn, strategy)
   ckpt_path = None
-  # wait_max = config.get(
-  #     'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   wait_max = config.get(
-    'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
+      'eval_checkpoint_wait_secs', config.save_checkpoint_secs * 100)
   is_ema = True if ema else False
 
   eval_summary_dir = os.path.join(
@@ -355,11 +358,11 @@ def evaluate(logdir, subset):
   writer = tf.summary.create_file_writer(eval_summary_dir)
 
   while True:
-    # ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path)
-    # logging.info(ckpt_path)
-    # if ckpt_path is None:
-    #   logging.info('Timed out waiting for checkpoint.')
-    #   break
+    ckpt_path = train_utils.wait_for_checkpoint(logdir, ckpt_path, wait_max)
+    logging.info(ckpt_path)
+    if ckpt_path is None:
+      logging.info('Timed out waiting for checkpoint.')
+      break
 
     train_utils.with_strategy(
         lambda: train_utils.restore(model, checkpoints, logdir, ema),

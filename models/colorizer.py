@@ -125,7 +125,7 @@ class ColTranCore(tf.keras.Model):
     loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
     return loss / (height * width)
 
-  def loss(self, targets, logits, train_config, training, aux_output=None):
+  def compute_loss(self, targets, logits, train_config, training, aux_output=None):
     """Converts targets to coarse colors and computes log-likelihood."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
@@ -162,7 +162,8 @@ class ColTranCore(tf.keras.Model):
 
   def sample(self, gray_cond, mode='argmax'):
     output = {}
-    z_gray = self.encoder(gray_cond)
+
+    z_gray = self.encoder(gray_cond, training=False)
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)

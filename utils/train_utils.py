@@ -85,10 +85,10 @@ def build_optimizer(config):
 
 def build_ema(config, ema_vars):
   """Builds exponential moving average."""
-  ema = None
+  ema=None
   polyak_decay = config.get('polyak_decay', 0.0)
-  print(f"ema_vars{type(ema_vars[0])}")
-  print(f"Is it an instance of tf.Variable? {isinstance(ema_vars[0], tf.Variable)}")
+  # print(f"ema_vars{type(ema_vars[0])}")
+  # print(f"Is it an instance of tf.Variable? {isinstance(ema_vars[0], tf.Variable)}")
   tf_ema_vars = []
   if polyak_decay:
     for var in ema_vars:
@@ -104,9 +104,8 @@ def build_ema(config, ema_vars):
       # Now that we have the real tf.Variable, we can check its dtype and append.
       if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
         tf_ema_vars.append(tf_var)
-  print(f"tf_ema_vars: {tf_ema_vars}")
-  ema = tf.train.ExponentialMovingAverage(polyak_decay)
-  ema.apply(tf_ema_vars)
+    ema = tf.train.ExponentialMovingAverage(polyak_decay)
+    ema.apply(tf_ema_vars)
   return ema
 
 
@@ -181,14 +180,29 @@ def get_curr_step(ckpt_path):
 def get_ema_vars(ema, model):
   """Get ema variables."""
   if ema:
+    tf_ema_vars = []
     try:
       return {
           ema.average(v).name: ema.average(v) for v in model.trainable_variables
       }
     except:  # pylint: disable=bare-except
-      ema.apply(model.trainable_variables)
+      ema_vars=model.trainable_variables
+      for var in ema_vars:
+        # Check for the backend-specific variable attribute
+        if hasattr(var, 'value') and isinstance(var.value, tf.Variable):
+          tf_var = var.value
+        elif hasattr(var, '_tf_variable') and isinstance(var._tf_variable, tf.Variable):
+          tf_var = var._tf_variable
+        else:
+          # If it's not a wrapper, it might already be a tf.Variable (for older Keras versions)
+          tf_var = var
+
+        # Now that we have the real tf.Variable, we can check its dtype and append.
+        if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
+          tf_ema_vars.append(tf_var)
+      ema.apply(tf_ema_vars)
       return {
-          ema.average(v).name: ema.average(v) for v in model.trainable_variables
+          ema.average(v).name: ema.average(v) for v in tf_ema_vars
       }
     else:
       return {}
