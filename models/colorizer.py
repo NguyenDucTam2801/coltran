@@ -115,18 +115,39 @@ class ColTranCore(tf.keras.Model):
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 
-  def image_loss(self, logits, labels):
-    """Cross-entropy between the logits and labels."""
+  def image_loss(self, logits, labels, alpha=0.25, gamma=2.0):
+    """Focal Loss implementation for class imbalance."""
     height, width = labels.shape[1:3]
+
+    # Remove singleton dimension if exists
     logits = tf.squeeze(logits, axis=-2)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
-    loss = tf.reduce_mean(loss, axis=0)
+
+    # Calculate probabilities
+    probs = tf.nn.softmax(logits, axis=-1)
+
+    # Gather probabilities of true classes
+    labels_one_hot = tf.one_hot(labels, depth=probs.shape[-1])
+    true_probs = tf.reduce_sum(probs * labels_one_hot, axis=-1)
+
+    # Calculate focal loss components
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+    modulating_factor = tf.pow(1.0 - true_probs, gamma)
+    focal_loss = alpha * modulating_factor * cross_entropy
+
+    # Reduce and convert units
+    loss = tf.reduce_mean(focal_loss, axis=0)
     loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+
     return loss / (height * width)
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Converts targets to coarse colors and computes log-likelihood."""
+    """Modified loss function with focal loss support."""
+    # Add focal loss parameters to train_config
+    alpha = train_config.get('focal_alpha', 0.25)
+    gamma = train_config.get('focal_gamma', 2.0)
+
+    # Existing preprocessing code
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
     if downsample:
@@ -137,18 +158,19 @@ class ColTranCore(tf.keras.Model):
     if aux_output is None:
       aux_output = {}
 
-    # quantize labels.
+    # Quantization remains the same
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
-
-    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    loss = self.image_loss(logits, labels)
+    # Use focal loss with parameters
+    loss = self.image_loss(logits, labels, alpha, gamma)
+
+    # Rest of the original code
     enc_logits = aux_output.get('encoder_logits')
     if enc_logits is None:
       return loss, {}
 
-    enc_loss = self.image_loss(enc_logits, labels)
+    enc_loss = self.image_loss(enc_logits, labels, alpha, gamma)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
