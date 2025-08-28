@@ -27,6 +27,7 @@ from tensorflow.keras import layers
 from coltran.models import core
 from coltran.models import layers as coltran_layers
 from coltran.utils import base_utils
+from tensorflow.keras.applications import VGG19
 
 
 class ColTranCore(tf.keras.Model):
@@ -54,6 +55,13 @@ class ColTranCore(tf.keras.Model):
     self.stage = config.get('stage', 'decoder')
     self.is_parallel_loss = 'encoder' in self.stage
     stages = ['decoder', 'encoder_decoder']
+    self.vgg = VGG19(include_top=False, weights='imagenet', input_shape=(None, None, 3))
+    self.vgg.trainable = False
+    # Extract features from specific layers (e.g., block3_conv3)
+    self.feature_extractor = tf.keras.Model(
+      inputs=self.vgg.input,
+      outputs=self.vgg.get_layer('block3_conv3').output
+    )
     if self.stage not in stages:
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
@@ -115,62 +123,57 @@ class ColTranCore(tf.keras.Model):
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 
-  def image_loss(self, logits, labels, alpha=0.25, gamma=2.0):
-    """Focal Loss implementation for class imbalance."""
-    height, width = labels.shape[1:3]
+  def image_loss(self, logits, labels):
+      """Perceptual Loss between predicted and target RGB images."""
+      # Convert logits (probabilities) and labels to RGB images
+      # --------------------------------------------------------
+      # 1. Get color palette for 3-bit quantization (8^3 = 512 colors)
+      color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
 
-    # Remove singleton dimension if exists
-    logits = tf.squeeze(logits, axis=-2)
+      # 2. Convert logits to RGB (differentiable)
+      logits = tf.squeeze(logits, axis=-2)  # [B, H, W, 512]
+      probs = tf.nn.softmax(logits, axis=-1)
+      pred_rgb = tf.tensordot(tf.cast(probs,dtype=tf.float32),tf.cast(color_palette,dtype=tf.float32) , axes=[[-1], [0]])  # [B, H, W, 3]
 
-    # Calculate probabilities
-    probs = tf.nn.softmax(logits, axis=-1)
+      # 3. Convert labels to RGB (non-differentiable)
+      labels_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
 
-    # Gather probabilities of true classes
-    labels_one_hot = tf.one_hot(labels, depth=probs.shape[-1])
-    true_probs = tf.reduce_sum(probs * labels_one_hot, axis=-1)
+      # Preprocess images for VGG (normalize to [-1, 1])
+      # -------------------------------------------------
+      pred_rgb = (tf.cast(pred_rgb,dtype=tf.float32) - 0.5) * 2.0  # Assuming input is [0,1] → normalize to [-1,1]
+      labels_rgb = (tf.cast(labels_rgb,dtype=tf.float32) - 0.5) * 2.0
 
-    # Calculate focal loss components
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits)
-    modulating_factor = tf.pow(1.0 - true_probs, gamma)
-    focal_loss = alpha * modulating_factor * cross_entropy
+      # Extract VGG features and compute loss
+      # -------------------------------------
+      pred_features = self.feature_extractor(pred_rgb)
+      target_features = self.feature_extractor(labels_rgb)
 
-    # Reduce and convert units
-    loss = tf.reduce_mean(focal_loss, axis=0)
-    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+      # Perceptual loss (L1 or L2)
+      loss = tf.reduce_mean(tf.abs(pred_features - target_features))  # L1
+      # loss = tf.reduce_mean(tf.square(pred_features - target_features))  # L2
 
-    return loss / (height * width)
+      return loss
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Modified loss function with focal loss support."""
-    # Add focal loss parameters to train_config
-    alpha = train_config.get('focal_alpha', 0.25)
-    gamma = train_config.get('focal_gamma', 2.0)
-
-    # Existing preprocessing code
+    """Computes perceptual loss."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
     if downsample:
-      labels = targets['targets_%d' % downsample_res]
+      labels = targets[f'targets_{downsample_res}']
     else:
       labels = targets['targets']
 
-    if aux_output is None:
-      aux_output = {}
-
-    # Quantization remains the same
+    # Quantize labels to 3-bit bins (same as original)
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    # Use focal loss with parameters
-    loss = self.image_loss(logits, labels, alpha, gamma)
+    # Compute perceptual loss
+    loss = self.image_loss(logits, labels)
 
-    # Rest of the original code
+    # Optional: Auxiliary encoder loss
     enc_logits = aux_output.get('encoder_logits')
-    if enc_logits is None:
-      return loss, {}
+    enc_loss = self.image_loss(enc_logits, labels)
 
-    enc_loss = self.image_loss(enc_logits, labels, alpha, gamma)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
@@ -319,3 +322,24 @@ class ColTranCore(tf.keras.Model):
     image = base_utils.convert_bits(image, n_bits_in=3, n_bits_out=8)
     image = tf.cast(image, dtype=tf.uint8)
     return image
+
+  def get_color_palette(self,n_bits=3):
+    """
+    Generates a color palette for 3-bit RGB quantization (8 values per channel, 512 total colors).
+
+    Returns:
+        palette: tf.Tensor of shape [512, 3], dtype=tf.int32.
+                  Each row is an RGB color in [0, 255].
+    """
+    num_values = 2 ** n_bits  # 8 values per channel (3 bits)
+    # Linearly spaced values from 0 to 255 (8-bit) for each channel
+    channel_values = tf.linspace(0.0, 255.0, num_values)
+    channel_values = tf.round(channel_values)  # Round to nearest integer
+    channel_values = tf.cast(channel_values, tf.int32)  # [0, 36, 73, ..., 255]
+
+    # Generate all combinations of R, G, B values
+    R, G, B = tf.meshgrid(channel_values, channel_values, channel_values, indexing='ij')
+    palette = tf.stack([R, G, B], axis=-1)  # Shape: [8, 8, 8, 3]
+
+    # Flatten to [512, 3] and return
+    return tf.reshape(palette, (-1, 3))
