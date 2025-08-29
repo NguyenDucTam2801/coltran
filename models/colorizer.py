@@ -124,56 +124,39 @@ class ColTranCore(tf.keras.Model):
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
-      """Perceptual Loss between predicted and target RGB images."""
-      # Convert logits (probabilities) and labels to RGB images
-      # --------------------------------------------------------
-      # 1. Get color palette for 3-bit quantization (8^3 = 512 colors)
-      color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
-
-      # 2. Convert logits to RGB (differentiable)
-      logits = tf.squeeze(logits, axis=-2)  # [B, H, W, 512]
-      probs = tf.nn.softmax(logits, axis=-1)
-      pred_rgb = tf.tensordot(tf.cast(probs,dtype=tf.float32),tf.cast(color_palette,dtype=tf.float32) , axes=[[-1], [0]])  # [B, H, W, 3]
-
-      # 3. Convert labels to RGB (non-differentiable)
-      labels_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
-
-      # Preprocess images for VGG (normalize to [-1, 1])
-      # -------------------------------------------------
-      pred_rgb = (tf.cast(pred_rgb,dtype=tf.float32) - 0.5) * 2.0  # Assuming input is [0,1] → normalize to [-1,1]
-      labels_rgb = (tf.cast(labels_rgb,dtype=tf.float32) - 0.5) * 2.0
-
-      # Extract VGG features and compute loss
-      # -------------------------------------
-      pred_features = self.feature_extractor(pred_rgb)
-      target_features = self.feature_extractor(labels_rgb)
-
-      # Perceptual loss (L1 or L2)
-      loss = tf.reduce_mean(tf.abs(pred_features - target_features))  # L1
-      # loss = tf.reduce_mean(tf.square(pred_features - target_features))  # L2
-
-      return loss
+    """Cross-entropy between the logits and labels."""
+    height, width = labels.shape[1:3]
+    logits = tf.squeeze(logits, axis=-2)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss, axis=0)
+    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+    return loss / (height * width)
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Computes perceptual loss."""
+    """Converts targets to coarse colors and computes log-likelihood."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
     if downsample:
-      labels = targets[f'targets_{downsample_res}']
+      labels = targets['targets_%d' % downsample_res]
     else:
       labels = targets['targets']
 
-    # Quantize labels to 3-bit bins (same as original)
+    if aux_output is None:
+      aux_output = {}
+
+    # quantize labels.
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
+
+    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    # Compute perceptual loss
     loss = self.image_loss(logits, labels)
-
-    # Optional: Auxiliary encoder loss
     enc_logits = aux_output.get('encoder_logits')
-    enc_loss = self.image_loss(enc_logits, labels)
+    if enc_logits is None:
+      return loss, {}
 
+    enc_loss = self.image_loss(enc_logits, labels)
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
