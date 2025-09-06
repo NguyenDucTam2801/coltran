@@ -65,6 +65,7 @@ class ColTranCore(tf.keras.Model):
     if self.stage not in stages:
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
+    self.color_palette = self.get_color_palette(n_bits=3)  # [512, 3]
 
   @property
   def metric_keys(self):
@@ -123,18 +124,51 @@ class ColTranCore(tf.keras.Model):
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 
+  def discriminator_loss(self, logits, labels):
+      """Separate discriminator loss (call this in training loop)."""
+      # Rebuild RGB images (same as above)
+      logits = tf.squeeze(logits, axis=-2)
+      probs = tf.nn.softmax(logits, axis=-1)
+      gen_images = tf.tensordot(probs, self.color_palette, axes=[[-1], [0]])
+      real_images = tf.gather(self.color_palette, labels)
+
+      # Discriminator outputs
+      d_real = self.discriminator(real_images)
+      d_fake = self.discriminator(gen_images)
+
+      # Discriminator loss
+      real_loss = self.bce_loss(tf.ones_like(d_real), d_real)
+      fake_loss = self.bce_loss(tf.zeros_like(d_fake), d_fake)
+      return 0.5 * (real_loss + fake_loss)
+
   def image_loss(self, logits, labels):
-    """Cross-entropy between the logits and labels."""
-    height, width = labels.shape[1:3]
-    logits = tf.squeeze(logits, axis=-2)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
-    loss = tf.reduce_mean(loss, axis=0)
-    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
-    return loss / (height * width)
+    """Adversarial loss for generator."""
+    # Convert logits to RGB images
+    logits = tf.squeeze(logits, axis=-2)  # [B, H, W, 512]
+    probs = tf.nn.softmax(logits, axis=-1)
+    gen_images = tf.tensordot(probs, tf.cast(self.color_palette,dtype=tf.float32), axes=[[-1], [0]])  # [B, H, W, 3]
+
+    # Convert labels to RGB (real images)
+    real_images = tf.gather(self.color_palette, labels)  # [B, H, W, 3]
+
+    # Discriminator outputs
+    d_real = self.discriminator.call(tf.cast(real_images,dtype=tf.float32))
+    d_fake = self.discriminator.call(tf.cast(gen_images,dtype=tf.float32))
+
+    # Generator loss: maximize log(D(fake))
+    g_loss = self.bce_loss(tf.ones_like(d_fake), d_fake)
+
+    # Optional: Add content loss (e.g., L1) for stability
+    l1_loss = tf.reduce_mean(tf.abs(gen_images - tf.cast(real_images,dtype=tf.float32)))
+    total_loss = g_loss + 10.0 * l1_loss  # Weighted combination
+
+    return total_loss
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Converts targets to coarse colors and computes log-likelihood."""
+    """Adversarial loss + optional content loss."""
+    self.discriminator = Discriminator()
+    self.bce_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
     if downsample:
@@ -326,3 +360,23 @@ class ColTranCore(tf.keras.Model):
 
     # Flatten to [512, 3] and return
     return tf.reshape(palette, (-1, 3))
+
+class Discriminator:
+  """PatchGAN discriminator for adversarial training."""
+
+  def __init__(self, **kwargs):
+    super(Discriminator, self).__init__(**kwargs)
+    # Define the layers, but don't create the Sequential model yet
+    self.conv1 = layers.Conv2D(64, 4, strides=2, padding='same', activation='leaky_relu')
+    self.conv2 = layers.Conv2D(128, 4, strides=2, padding='same', activation='leaky_relu')
+    self.conv3 = layers.Conv2D(256, 4, strides=2, padding='same', activation='leaky_relu')
+    self.conv4 = layers.Conv2D(1, 4, strides=1, padding='same')
+
+  @tf.function
+  def call(self, x):
+    """Forward pass for the discriminator."""
+    x = self.conv1(x)
+    x = self.conv2(x)
+    x = self.conv3(x)
+    x = self.conv4(x)
+    return x
