@@ -72,7 +72,6 @@ class GrayScaleEncoder(layers.Layer):
         raise ValueError('Expected inputs is a grayscale image')
       grayscale = tf.squeeze(inputs, axis=-1)
     grayscale = tf.one_hot(grayscale, depth=256)
-    print(f"grayscale: {grayscale.shape}")
     h_gray = self.embedding(grayscale)
     return self.encoder(h_gray)
 

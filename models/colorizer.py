@@ -65,7 +65,6 @@ class ColTranCore(tf.keras.Model):
     if self.stage not in stages:
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
-    self.color_palette = self.get_color_palette(n_bits=3)  # [512, 3]
 
   @property
   def metric_keys(self):
@@ -124,73 +123,50 @@ class ColTranCore(tf.keras.Model):
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 
-  def discriminator_loss(self, logits, labels):
-      """Separate discriminator loss (call this in training loop)."""
-      # Rebuild RGB images (same as above)
-      logits = tf.squeeze(logits, axis=-2)
-      probs = tf.nn.softmax(logits, axis=-1)
-      gen_images = tf.tensordot(probs, self.color_palette, axes=[[-1], [0]])
-      real_images = tf.gather(self.color_palette, labels)
-
-      # Discriminator outputs
-      d_real = self.discriminator(real_images)
-      d_fake = self.discriminator(gen_images)
-
-      # Discriminator loss
-      real_loss = self.bce_loss(tf.ones_like(d_real), d_real)
-      fake_loss = self.bce_loss(tf.zeros_like(d_fake), d_fake)
-      return 0.5 * (real_loss + fake_loss)
-
   def image_loss(self, logits, labels):
-    """Adversarial loss for generator."""
-    # Convert logits to RGB images
-    logits = tf.squeeze(logits, axis=-2)  # [B, H, W, 512]
-    probs = tf.nn.softmax(logits, axis=-1)
-    gen_images = tf.tensordot(probs, tf.cast(self.color_palette,dtype=tf.float32), axes=[[-1], [0]])  # [B, H, W, 3]
+    """L1 Loss between predicted and target RGB values."""
+    height, width = labels.shape[1], labels.shape[2]
 
-    # Convert labels to RGB (real images)
-    real_images = tf.gather(self.color_palette, labels)  # [B, H, W, 3]
+    # Get 3-bit color palette [512, 3]
+    color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
+    color_palette = tf.cast(color_palette, tf.float32) / 255.0  # Normalize to [0,1]
 
-    # Discriminator outputs
-    d_real = self.discriminator.call(tf.cast(real_images,dtype=tf.float32))
-    d_fake = self.discriminator.call(tf.cast(gen_images,dtype=tf.float32))
+    # Convert logits to RGB predictions [B, H, W, 3]
+    logits = tf.squeeze(logits, axis=-2)  # Remove singleton dim (if exists)
+    probs = tf.nn.softmax(logits, axis=-1)  # [B, H, W, 512]
+    pred_rgb = tf.tensordot(probs, color_palette, axes=[[-1], [0]])  # [B, H, W, 3]
 
-    # Generator loss: maximize log(D(fake))
-    g_loss = self.bce_loss(tf.ones_like(d_fake), d_fake)
+    # Convert label indices to RGB targets [B, H, W, 3]
+    target_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
 
-    # Optional: Add content loss (e.g., L1) for stability
-    l1_loss = tf.reduce_mean(tf.abs(gen_images - tf.cast(real_images,dtype=tf.float32)))
-    total_loss = g_loss + 10.0 * l1_loss  # Weighted combination
-
-    return total_loss
+    # Compute L1 loss
+    l1_loss = tf.reduce_mean(tf.abs(pred_rgb - target_rgb))
+    return l1_loss
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Adversarial loss + optional content loss."""
-    self.discriminator = Discriminator()
-    self.bce_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-
+    """Computes L1 loss for autoregressive stage."""
+    # Preprocess labels (same as original)
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    if downsample:
-      labels = targets['targets_%d' % downsample_res]
-    else:
-      labels = targets['targets']
+    labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
 
     if aux_output is None:
       aux_output = {}
 
-    # quantize labels.
+    # Quantize labels to 3-bit bins
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
-
-    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
+    # Compute L1 loss
     loss = self.image_loss(logits, labels)
+
+    # Optional: Auxiliary encoder loss
     enc_logits = aux_output.get('encoder_logits')
     if enc_logits is None:
       return loss, {}
 
     enc_loss = self.image_loss(enc_logits, labels)
+
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
@@ -360,23 +336,3 @@ class ColTranCore(tf.keras.Model):
 
     # Flatten to [512, 3] and return
     return tf.reshape(palette, (-1, 3))
-
-class Discriminator:
-  """PatchGAN discriminator for adversarial training."""
-
-  def __init__(self, **kwargs):
-    super(Discriminator, self).__init__(**kwargs)
-    # Define the layers, but don't create the Sequential model yet
-    self.conv1 = layers.Conv2D(64, 4, strides=2, padding='same', activation='leaky_relu')
-    self.conv2 = layers.Conv2D(128, 4, strides=2, padding='same', activation='leaky_relu')
-    self.conv3 = layers.Conv2D(256, 4, strides=2, padding='same', activation='leaky_relu')
-    self.conv4 = layers.Conv2D(1, 4, strides=1, padding='same')
-
-  @tf.function
-  def call(self, x):
-    """Forward pass for the discriminator."""
-    x = self.conv1(x)
-    x = self.conv2(x)
-    x = self.conv3(x)
-    x = self.conv4(x)
-    return x

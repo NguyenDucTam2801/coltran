@@ -152,7 +152,6 @@ def train_step(config,
           tf_ema_vars.append(tf_var)
       ema.apply(tf_ema_vars)
     return loss
-
   return train_utils.step_with_strategy(step_fn, strategy)
 
 
@@ -270,12 +269,12 @@ def train(logdir):
   # See: https://www.tensorflow.org/guide/tpu#improving_performance_by_multiple_steps_within_tffunction # pylint: disable=line-too-long
   @tf.function
   def train_multiple_steps(iterator, steps_per_epoch):
-
     train_step_f = train_step(config, model, optimizer, metrics, ema,
                               strategy)
-
     for _ in range(steps_per_epoch):
       train_step_f(iterator)
+
+
 
   while optimizer.iterations.numpy() < config.get('max_train_steps', 1000000):
     num_train_steps = optimizer.iterations
@@ -284,8 +283,7 @@ def train(logdir):
       metrics[metric_key].reset_state()
 
     start_run = time.time()
-
-    train_multiple_steps(data_iterator, tf.convert_to_tensor(steps_per_write))
+    train_multiple_steps(data_iterator, int(steps_per_write))
 
     steps_per_sec = steps_per_write / (time.time() - start_run)
     with writer.as_default():
@@ -296,7 +294,6 @@ def train(logdir):
         if metric_key == 'total_loss':
           logging.info('Loss: %.3f bits/dim, Speed: %.3f steps/second',
                        metric_np, steps_per_sec)
-
     if time.time() - start_time > config.save_checkpoint_secs:
       checkpoint_name = checkpoint.save()
       logging.info('Saved checkpoint to %s', checkpoint_name)
