@@ -54,7 +54,6 @@ class ColTranCore(tf.keras.Model):
     self.stage = config.get('stage', 'decoder')
     self.is_parallel_loss = 'encoder' in self.stage
     stages = ['decoder', 'encoder_decoder']
-    self.vgg = VGG19(include_top=False, weights='imagenet', input_shape=(None, None, 3))
     self.vgg.trainable = False
     # Extract features from specific layers (e.g., block3_conv3)
     self.feature_extractor = tf.keras.Model(
