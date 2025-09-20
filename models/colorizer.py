@@ -27,7 +27,6 @@ from tensorflow.keras import layers
 from coltran.models import core
 from coltran.models import layers as coltran_layers
 from coltran.utils import base_utils
-from tensorflow.keras.applications import VGG19
 
 
 class ColTranCore(tf.keras.Model):
