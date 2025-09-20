@@ -75,10 +75,12 @@ from ml_collections import config_flags
 import numpy as np
 from coltran import visualizer
 
+from tqdm.auto import tqdm
 
 import tensorflow.compat.v2 as tf
 
 from coltran import datasets
+from coltran.text_encode import TextEncoder
 from coltran.models import colorizer
 from coltran.models import upsampler
 from coltran.utils import base_utils
@@ -106,6 +108,7 @@ flags.DEFINE_integer('steps_per_summaries', 100, 'Steps per summaries.')
 flags.DEFINE_integer('batch_size', None,
                      'Batch size. If not provided, use the optimal batch-size '
                      'for each model.')
+flags.DEFINE_string('captions',None, 'Caption to use.')
 config_flags.DEFINE_config_file(
     'config',
     default='test_configs/colorizer.py',
@@ -151,7 +154,7 @@ def build_model(config):
 
   if name == 'coltran_core':
     model = colorizer.ColTranCore(config.model)
-    model(zero_64, training=False)
+    model(zero_64 ,training=False)
   elif name == 'color_upsampler':
     model = upsampler.ColorUpsampler(config.model)
     model(inputs=zero_64, inputs_slice=zero_64_slice, training=False)
@@ -183,6 +186,18 @@ def get_store_dir(name, store_dir):
   tf.io.gfile.makedirs(store_dir)
   return store_dir
 
+def text_embedded(captions, batch_size = 1):
+    text_encoder = TextEncoder()
+    all_embeddings = []
+    for i in tqdm(range(0, len(captions), batch_size)):
+        batch_texts = captions[i:i + batch_size]
+        batch_embeddings = text_encoder.encode_batch(batch_texts)
+        all_embeddings.append(batch_embeddings)
+    final_embeddings = np.concatenate(all_embeddings, axis=0)
+    logging.info("Encoding complete.")
+    logging.info("Shape of final embeddings array:", final_embeddings.shape)
+    return final_embeddings
+
 
 def main(_):
   print(f"Is GPU available: {tf.config.list_physical_devices('GPU')}")
@@ -202,6 +217,11 @@ def main(_):
     gen_dataset = datasets.create_gen_dataset_from_images(gen_data_dir)
     gen_dataset = gen_dataset.batch(batch_size)
     gen_dataset_iter = iter(gen_dataset)
+  else:
+      captions = FLAGS.captions
+      caption_list = captions.split(sep="|")
+      text_encode = text_embedded(caption_list, batch_size)
+
 
   dataset = create_grayscale_dataset_from_images(FLAGS.img_dir, batch_size)
   dataset_iter = iter(dataset)
@@ -225,7 +245,7 @@ def main(_):
 
     if model_name == 'coltran_core':
       # visualizer.visualize_coltran_stage(gray_64,"grayscale_low")
-      out = model.sample(gray_64, mode='sample')
+      out = model.sample(gray_64,captions=text_encode ,mode='sample')
       samples = out['auto_sample']
     elif model_name == 'color_upsampler':
       prev_gen = base_utils.convert_bits(prev_gen, n_bits_in=8, n_bits_out=3)

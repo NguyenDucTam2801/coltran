@@ -31,6 +31,7 @@ from absl import logging
 from ml_collections import config_flags
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import numpy as np
 
 from coltran import datasets
 from coltran.models import colorizer
@@ -54,6 +55,8 @@ flags.DEFINE_enum('accelerator_type', 'GPU', ['CPU', 'GPU', 'TPU'],
                   'Hardware type.')
 flags.DEFINE_enum('dataset', 'imagenet', ['imagenet', 'custom'], 'Dataset')
 flags.DEFINE_string('data_dir', None, 'Data directory for custom images.')
+flags.DEFINE_string('npz_dir', None, 'npz directory for embedded captions.')
+
 flags.DEFINE_string('tpu_worker_name', 'tpu_worker', 'Name of the TPU worker.')
 flags.DEFINE_string(
     'pretrain_dir', None, 'Finetune from a pretrained checkpoint.')
@@ -91,7 +94,6 @@ def is_tpu():
 
 def loss_on_batch(inputs, model, config, training=False):
   """Loss on a batch of inputs."""
-  # print(f"Model Coltran: {model.loss}")
   logits, aux_output = model.get_logits(
       inputs_dict=inputs, train_config=config, training=training)
   loss, aux_loss_dict = model.compute_loss(targets=inputs, logits=logits, train_config=config, training=training,aux_output=aux_output)
@@ -166,9 +168,9 @@ def build(config, batch_size, is_train=False):
     if downsample:
       h, w = downsample_res, downsample_res
     zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    caption = tf.zeros((batch_size,512),dtype=tf.float32)
     model = colorizer.ColTranCore(config.model)
-    model(zero, training=is_train)
-    print(f"model: {model}")
+    model(zero, caption ,training=is_train)
 
 
   c = 1 if is_train else 3
@@ -201,24 +203,27 @@ def train(logdir):
   strategy, batch_size = train_utils.setup_strategy(
       config, FLAGS.master,
       FLAGS.devices_per_worker, FLAGS.mode, FLAGS.accelerator_type)
-  print(f"Batch size: {batch_size}")
   def input_fn(input_context=None):
     read_config = None
     if input_context is not None:
       read_config = tfds.ReadConfig(input_context=input_context)
-
+    embedded = np.load(FLAGS.npz_dir)
     dataset = datasets.get_dataset(
         name=FLAGS.dataset,
         config=config,
         batch_size=config.batch_size,
         subset='train',
         read_config=read_config,
-        data_dir=FLAGS.data_dir)
+        data_dir=FLAGS.data_dir,
+        embedded_files=embedded
+    )
     return dataset
 
   # DATASET CREATION.
   logging.info('Building dataset.')
   train_dataset = train_utils.dataset_with_strategy(input_fn, strategy)
+
+
   data_iterator = iter(train_dataset)
 
   # MODEL BUILDING
@@ -313,11 +318,15 @@ def evaluate(logdir, subset):
       FLAGS.devices_per_worker, FLAGS.mode, FLAGS.accelerator_type)
 
   def input_fn(_=None):
-    return datasets.get_dataset(
-        name=config.dataset,
+
+    return  datasets.get_dataset(
+        name=FLAGS.dataset,
         config=config,
-        batch_size=config.eval_batch_size,
-        subset=subset)
+        batch_size=config.batch_size,
+        subset=FLAGS.mode,
+        data_dir=FLAGS.data_dir,
+
+      )
 
   model, optimizer, ema = train_utils.with_strategy(
       lambda: build(config, batch_size, False), strategy)

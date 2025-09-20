@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The Google Research Authors.
+# Copyright 2025 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ from absl import logging
 import numpy as np
 import tensorflow as tf
 import yaml
-from tensorflow.python.framework import dtypes
-
 
 
 def step_with_strategy(step_fn, strategy):
@@ -43,7 +41,7 @@ def write_config(config, logdir):
     yaml.dump(config.to_dict(), f)
 
 
-def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=3):
+def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=-1):
   """Returns new checkpoint paths, or None if timing out."""
   is_single = isinstance(observe_dirs, str)
   if is_single:
@@ -85,27 +83,12 @@ def build_optimizer(config):
 
 def build_ema(config, ema_vars):
   """Builds exponential moving average."""
-  ema=None
+  ema = None
   polyak_decay = config.get('polyak_decay', 0.0)
-  # print(f"ema_vars{type(ema_vars[0])}")
-  # print(f"Is it an instance of tf.Variable? {isinstance(ema_vars[0], tf.Variable)}")
-  tf_ema_vars = []
   if polyak_decay:
-    for var in ema_vars:
-      # Check for the backend-specific variable attribute
-      if hasattr(var, 'value') and isinstance(var.value, tf.Variable):
-        tf_var = var.value
-      elif hasattr(var, '_tf_variable') and isinstance(var._tf_variable, tf.Variable):
-        tf_var = var._tf_variable
-      else:
-        # If it's not a wrapper, it might already be a tf.Variable (for older Keras versions)
-        tf_var = var
-
-      # Now that we have the real tf.Variable, we can check its dtype and append.
-      if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
-        tf_ema_vars.append(tf_var)
     ema = tf.train.ExponentialMovingAverage(polyak_decay)
-    ema.apply(tf_ema_vars)
+    ema.apply(ema_vars)
+    logging.info('Built with exponential moving average.')
   return ema
 
 
@@ -180,29 +163,14 @@ def get_curr_step(ckpt_path):
 def get_ema_vars(ema, model):
   """Get ema variables."""
   if ema:
-    tf_ema_vars = []
     try:
       return {
           ema.average(v).name: ema.average(v) for v in model.trainable_variables
       }
     except:  # pylint: disable=bare-except
-      ema_vars=model.trainable_variables
-      for var in ema_vars:
-        # Check for the backend-specific variable attribute
-        if hasattr(var, 'value') and isinstance(var.value, tf.Variable):
-          tf_var = var.value
-        elif hasattr(var, '_tf_variable') and isinstance(var._tf_variable, tf.Variable):
-          tf_var = var._tf_variable
-        else:
-          # If it's not a wrapper, it might already be a tf.Variable (for older Keras versions)
-          tf_var = var
-
-        # Now that we have the real tf.Variable, we can check its dtype and append.
-        if isinstance(tf_var, tf.Variable) and tf_var.dtype.is_floating:
-          tf_ema_vars.append(tf_var)
-      ema.apply(tf_ema_vars)
+      ema.apply(model.trainable_variables)
       return {
-          ema.average(v).name: ema.average(v) for v in tf_ema_vars
+          ema.average(v).name: ema.average(v) for v in model.trainable_variables
       }
     else:
       return {}
@@ -227,32 +195,3 @@ def save_nparray_to_disk(filename, nparray):
     tf.io.gfile.makedirs(fdir)
   with tf.io.gfile.GFile(filename, 'w') as f:
     np.save(f, nparray)
-
-def get_tf_dtype(dtype_value):
-  """Converts a potential string dtype to a tf.dtypes.DType object."""
-  if isinstance(dtype_value, str):
-    return tf.as_dtype(dtype_value)
-  return dtype_value
-
-class EmaVariableWrapper:
-  def __init__(self, variable):
-    # Store the original variable. All TensorFlow operations will use this.
-    self.variable = variable
-    # Create the corrected dtype attribute that ema.apply() expects.
-    self.dtype = tf.as_dtype(variable.dtype)
-
-  # When TensorFlow needs to use this object in a graph, it will
-  # automatically convert it to a tensor. We define that conversion
-  # to just return our original underlying variable.
-  @tf.autograph.experimental.do_not_convert
-  def _as_graph_element(self):
-    return self.variable
-
-
-# This registers the conversion behavior with TensorFlow.
-tf.register_tensor_conversion_function(
-  EmaVariableWrapper,
-  lambda value, dtype=None, name=None: tf.convert_to_tensor(
-    value.variable, dtype=dtype, name=name
-  )
-)

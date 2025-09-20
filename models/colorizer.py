@@ -66,6 +66,9 @@ class ColTranCore(tf.keras.Model):
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
 
+    self.film_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_scale_generator')
+    self.film_shift_generator = layers.Dense(512, activation=None, bias_initializer='zeros', name='film_shift_generator')
+
   @property
   def metric_keys(self):
     if self.stage == 'encoder_decoder':
@@ -88,10 +91,14 @@ class ColTranCore(tf.keras.Model):
         units=self.num_symbols, name='auto_logits')
     self.final_norm = layers.LayerNormalization()
 
-  def call(self, inputs, training=True):
+  def call(self, inputs, captions = None ,training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     gray = tf.image.rgb_to_grayscale(inputs)
     z = self.encoder(gray)
+    if captions is not None:
+      z = self.blend(text_embedding=captions, image_features=z)
+    # text_embedding =tf.reshape(captions, (captions.shape[0], 1, 1, 512))
+    # z=z+text_embedding
 
     if self.is_parallel_loss:
       enc_logits = self.parallel_dense(z)
@@ -124,64 +131,62 @@ class ColTranCore(tf.keras.Model):
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
-    """L1 Loss between predicted and target RGB values."""
-    height, width = labels.shape[1], labels.shape[2]
-
-    # Get 3-bit color palette [512, 3]
-    color_palette = self.get_color_palette(n_bits=3)  # Shape: [512, 3]
-    color_palette = tf.cast(color_palette, tf.float32) / 255.0  # Normalize to [0,1]
-
-    # Convert logits to RGB predictions [B, H, W, 3]
-    logits = tf.squeeze(logits, axis=-2)  # Remove singleton dim (if exists)
-    probs = tf.nn.softmax(logits, axis=-1)  # [B, H, W, 512]
-    pred_rgb = tf.tensordot(probs, color_palette, axes=[[-1], [0]])  # [B, H, W, 3]
-
-    # Convert label indices to RGB targets [B, H, W, 3]
-    target_rgb = tf.gather(color_palette, labels)  # [B, H, W, 3]
-
-    # Compute L1 loss
-    l1_loss = tf.reduce_mean(tf.abs(pred_rgb - target_rgb))
-    return l1_loss
+    """Cross-entropy between the logits and labels."""
+    height, width = labels.shape[1:3]
+    logits = tf.squeeze(logits, axis=-2)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss, axis=0)
+    loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
+    return loss / (height * width)
 
   def compute_loss(self, targets, logits, train_config, training, aux_output=None):
-    """Computes L1 loss for autoregressive stage."""
-    # Preprocess labels (same as original)
+    """Converts targets to coarse colors and computes log-likelihood."""
     downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    labels = targets[f'targets_{downsample_res}'] if downsample else targets['targets']
+    if downsample:
+      labels = targets['targets_%d' % downsample_res]
+    else:
+      labels = targets['targets']
 
     if aux_output is None:
       aux_output = {}
 
-    # Quantize labels to 3-bit bins
+    # quantize labels.
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
+
+    # bin each channel triplet.
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
 
-    # Compute L1 loss
     loss = self.image_loss(logits, labels)
-
-    # Optional: Auxiliary encoder loss
     enc_logits = aux_output.get('encoder_logits')
     if enc_logits is None:
       return loss, {}
 
     enc_loss = self.image_loss(enc_logits, labels)
-
     return loss, {'encoder': enc_loss}
 
   def get_logits(self, inputs_dict, train_config, training):
     is_downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
+    print(f"inputs_dict: {inputs_dict}")
+
     if is_downsample:
       inputs = inputs_dict['targets_%d' % downsample_res]
     else:
       inputs = inputs_dict['targets']
-    return self(inputs=inputs, training=training)
 
-  def sample(self, gray_cond, mode='argmax'):
+    captions = inputs_dict['caption']
+    return self(inputs=inputs, captions=captions ,training=training)
+
+  def sample(self, gray_cond,captions=None ,mode='argmax'):
     output = {}
 
     z_gray = self.encoder(gray_cond, training=False)
+
+    if captions is not None:
+      z_gray = self.blend(text_embedding=captions, image_features=z_gray)
+
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)
@@ -336,3 +341,19 @@ class ColTranCore(tf.keras.Model):
 
     # Flatten to [512, 3] and return
     return tf.reshape(palette, (-1, 3))
+
+  def blend(self, text_embedding, image_features):
+    # 2. Generate the scale and shift vectors from the text embedding
+    #    Now we use self.film_scale_generator instead of creating a new layer.
+    scale_vector = self.film_scale_generator(text_embedding)
+    shift_vector = self.film_shift_generator(text_embedding)
+
+    # 3. Reshape them for broadcasting
+    # Use tf.shape to handle dynamic batch sizes correctly inside tf.function
+    batch_size = tf.shape(text_embedding)[0]
+    scale = tf.reshape(scale_vector+0.5, (batch_size, 1, 1, 512))
+    shift = tf.reshape(shift_vector, (batch_size, 1, 1, 512))
+
+    # 4. Apply the FiLM transformation
+    fused_features = image_features * scale + shift
+    return fused_features
