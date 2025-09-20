@@ -162,7 +162,7 @@ class ColTranCore(tf.keras.Model):
   def get_logits(self, inputs_dict, train_config, training):
     is_downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    print(f"inputs_dict: {inputs_dict}")
+    # print(f"inputs_dict: {inputs_dict}")
 
     if is_downsample:
       inputs = inputs_dict['targets_%d' % downsample_res]
