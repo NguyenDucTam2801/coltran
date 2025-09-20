@@ -344,7 +344,7 @@ class ColTranCore(tf.keras.Model):
     # 3. Reshape them for broadcasting
     # Use tf.shape to handle dynamic batch sizes correctly inside tf.function
     batch_size = tf.shape(text_embedding)[0]
-    scale = tf.reshape(scale_vector+0.5, (batch_size, 1, 1, 512))
+    scale = tf.reshape(scale_vector, (batch_size, 1, 1, 512))
     shift = tf.reshape(shift_vector, (batch_size, 1, 1, 512))
 
     # 4. Apply the FiLM transformation
