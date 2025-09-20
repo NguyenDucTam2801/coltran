@@ -54,12 +54,7 @@ class ColTranCore(tf.keras.Model):
     self.stage = config.get('stage', 'decoder')
     self.is_parallel_loss = 'encoder' in self.stage
     stages = ['decoder', 'encoder_decoder']
-    self.vgg.trainable = False
     # Extract features from specific layers (e.g., block3_conv3)
-    self.feature_extractor = tf.keras.Model(
-      inputs=self.vgg.input,
-      outputs=self.vgg.get_layer('block3_conv3').output
-    )
     if self.stage not in stages:
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
