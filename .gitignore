@@ -1,0 +1,16 @@
+# Ignore IDE settings
+.idea/
+
+# Ignore Python cache folders
+__pycache__/
+configs/__pycache__/
+models/__pycache__/
+utils/__pycache__/
+
+# Ignore model and dataset folders
+coltran_models/
+dataset/
+
+# Ignore image folders
+input_images/
+output_images/
