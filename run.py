@@ -55,7 +55,7 @@ flags.DEFINE_enum('accelerator_type', 'GPU', ['CPU', 'GPU', 'TPU'],
                   'Hardware type.')
 flags.DEFINE_enum('dataset', 'imagenet', ['imagenet', 'custom'], 'Dataset')
 flags.DEFINE_string('data_dir', None, 'Data directory for custom images.')
-flags.DEFINE_string('npz_dir', None, 'npz directory for embedded captions.')
+flags.DEFINE_string('hdf5_dir', None, 'hdf5 directory for embedded captions.')
 
 flags.DEFINE_string('tpu_worker_name', 'tpu_worker', 'Name of the TPU worker.')
 flags.DEFINE_string(
@@ -207,7 +207,6 @@ def train(logdir):
     read_config = None
     if input_context is not None:
       read_config = tfds.ReadConfig(input_context=input_context)
-    embedded = np.load(FLAGS.npz_dir)
     dataset = datasets.get_dataset(
         name=FLAGS.dataset,
         config=config,
@@ -215,7 +214,7 @@ def train(logdir):
         subset='train',
         read_config=read_config,
         data_dir=FLAGS.data_dir,
-        embedded_files=embedded
+        embedded_file=FLAGS.hdf5_dir
     )
     return dataset
 
