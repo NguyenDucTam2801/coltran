@@ -318,15 +318,16 @@ def evaluate(logdir, subset):
       FLAGS.devices_per_worker, FLAGS.mode, FLAGS.accelerator_type)
 
   def input_fn(_=None):
-
-    return  datasets.get_dataset(
-        name=FLAGS.dataset,
-        config=config,
-        batch_size=config.batch_size,
-        subset=FLAGS.mode,
-        data_dir=FLAGS.data_dir,
-
-      )
+    embedded = np.load(FLAGS.npz_dir)
+    dataset = datasets.get_dataset(
+      name=FLAGS.dataset,
+      config=config,
+      batch_size=config.batch_size,
+      subset=FLAGS.mode,
+      data_dir=FLAGS.data_dir,
+      embedded_files=embedded
+    )
+    return dataset
 
   model, optimizer, ema = train_utils.with_strategy(
       lambda: build(config, batch_size, False), strategy)

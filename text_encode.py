@@ -27,6 +27,5 @@ class TextEncoder:
         # We'll save the pooled_output for global conditioning.
         # If you need cross-attention, save last_hidden_state instead.
         pooled_output = outputs.pooler_output.cpu().numpy()
-        last_hidden_state = outputs.last_hidden_state.cpu().numpy()
 
-        return pooled_output, last_hidden_state
+        return pooled_output

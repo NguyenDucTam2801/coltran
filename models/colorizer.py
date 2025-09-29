@@ -62,20 +62,6 @@ class ColTranCore(tf.keras.Model):
     self.film_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_scale_generator')
     self.film_shift_generator = layers.Dense(512, activation=None, bias_initializer='zeros', name='film_shift_generator')
 
-    self.text_feature_dim = 768  # For clip-vit-base-patch32
-
-    # --- UPDATE THIS ---
-    # Pass the text_feature_dim to the new blocks
-    self.final_fusion_block_1 = core.CrossAttentionBlock(
-      hidden_size=self.hidden_size,
-      num_heads=8,
-      text_feature_dim=self.text_feature_dim
-    )
-    self.final_fusion_block_2 = core.CrossAttentionBlock(
-      hidden_size=self.hidden_size,
-      num_heads=8,
-      text_feature_dim=self.text_feature_dim
-    )
 
 
   @property
@@ -113,12 +99,12 @@ class ColTranCore(tf.keras.Model):
       enc_logits = self.parallel_dense(z)
       enc_logits = tf.expand_dims(enc_logits, axis=-2)
 
-    dec_logits = self.decoder(inputs, z, training=training,text_token_embeddings=captions)
+    dec_logits = self.decoder(inputs, z, training=training)
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
 
-  def decoder(self, inputs,z, training, text_token_embeddings=None ):
+  def decoder(self, inputs, z, training):
     """Decodes grayscale representation and masked colors into logits."""
     # (H, W, 512) preprocessing.
     # quantize to 3 bits.
@@ -135,28 +121,7 @@ class ColTranCore(tf.keras.Model):
     h_upper = self.outer_decoder((h_dec, z), training=training)
     h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
 
-    if text_token_embeddings is not None:
-      # 3. --- Reshape for Cross-Attention ---
-      # The MultiHeadAttention layer expects inputs of shape (Batch, SeqLen, Features)
-      batch_size = tf.shape(h_inner)[0]
-      height = tf.shape(h_inner)[1]
-      width = tf.shape(h_inner)[2]
-
-      # Reshape image features from (B, H, W, C) to (B, H*W, C)
-      image_features_seq = tf.reshape(h_inner, [batch_size, height * width, self.hidden_size])
-
-      # Text features are already in the correct shape: (B, text_seq_len, C)
-
-      # 4. --- Apply Cross-Attention Fusion ---
-      # Pass the image and text sequences through our new blocks
-      fused_features = self.final_fusion_block_1((image_features_seq, text_token_embeddings), training=training)
-      fused_features = self.final_fusion_block_2((fused_features, text_token_embeddings), training=training)
-
-      # 5. --- Reshape back to image format and get logits ---
-      # Reshape from (B, H*W, C) back to (B, H, W, C)
-      final_activations = tf.reshape(fused_features, [batch_size, height, width, self.hidden_size])
-
-    activations = self.final_norm(h_inner if text_token_embeddings is None else final_activations)
+    activations = self.final_norm(h_inner)
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 

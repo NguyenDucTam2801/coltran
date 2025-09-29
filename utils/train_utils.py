@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 def step_with_strategy(step_fn, strategy):
 
   def _step(iterator):
+
     if strategy is None:
       step_fn(next(iterator))
     else:
@@ -55,6 +56,8 @@ def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=3):
   prev_path = prev_path or [None for _ in observe_dirs]
   while True:
     new_path = [tf.train.latest_checkpoint(d) for d in observe_dirs]
+    print(f"prev_path:{prev_path}")
+    print(f"new path: {new_path}")
     if all(a != b for a, b in zip(new_path, prev_path)):
       if is_single:
         latest_ckpt = new_path[0]
