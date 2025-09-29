@@ -44,7 +44,7 @@ def write_config(config, logdir):
     yaml.dump(config.to_dict(), f)
 
 
-def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=3):
+def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=-1):
   """Returns new checkpoint paths, or None if timing out."""
   is_single = isinstance(observe_dirs, str)
   if is_single:

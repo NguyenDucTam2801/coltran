@@ -18,8 +18,6 @@
 import functools
 import os
 import re
-
-import h5py
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from coltran.utils import datasets_utils
@@ -44,7 +42,7 @@ def resize_to_square(image, resolution=32, train=True):
   return image
 
 
-def preprocess(example ,train=True, resolution=256):
+def preprocess(example, caption=None ,train=True, resolution=256):
   """Apply random crop (or) central crop to the image."""
   image = example
 
@@ -59,7 +57,7 @@ def preprocess(example ,train=True, resolution=256):
   example_copy = dict()
   example_copy['image'] = image
   example_copy['targets'] = image
-  example_copy['caption'] = example['text_embedding_input']
+  example_copy['caption'] = caption
   if is_label:
     example_copy['label'] = example['label']
   return example_copy
@@ -97,88 +95,35 @@ def get_gen_dataset(data_dir, batch_size):
   return tf_dataset
 
 
-def create_dataset(image_dir, batch_size, hdf5_path=None):
-  """
-  Creates a dataset, handling both unconditional (images only) and
-  conditional (images + embeddings from a large .npz file) cases.
-
-  Args:
-      image_dir (str): Directory where image files are stored.
-      batch_size (int): The desired batch size.
-      npz_path (str, optional): Path to the .npz file containing 'image_names'
-                                and 'sequence_embeddings'. Defaults to None.
-
-  Returns:
-      tf.data.Dataset: The final, batched dataset.
-  """
-
-  def load_and_preprocess_image(path):
-    """Loads and preprocesses an image from a file path."""
-    image_content = tf.io.read_file(path)
-    image = tf.image.decode_jpeg(image_content, channels=3)
-    # Add your preprocessing (resize, normalize, etc.) here
-    image = tf.image.resize(image, [256, 256])
-    image = tf.cast(image, tf.float32) / 255.0
+def create_gen_dataset_from_images(image_dir, embedded_files=None):
+  """Creates a dataset from the provided directory."""
+  embedded_files=np.load(embedded_files)
+  def load_image_only(path):
+    image_str = tf.io.read_file(path)
+    image = tf.image.decode_image(image_str, channels=3)
     return image
 
-  if hdf5_path is None:
-    # --- Unconditional Case: Images only ---
-    files = [os.path.join(image_dir, f) for f in tf.io.gfile.listdir(image_dir)]
-    path_ds = tf.data.Dataset.from_tensor_slices(files)
-    dataset = path_ds.map(load_and_preprocess_image, num_parallel_calls=tf.data.AUTOTUNE)
+  def load_image_with_embed(path, embedded_captions):
+    image_str = tf.io.read_file(path)
+    image = tf.image.decode_image(image_str, channels=3)
+    return image, embedded_captions
+
+  if embedded_files is None:
+    # case: only images
+    child_files = tf.io.gfile.listdir(image_dir)
+    files = [os.path.join(image_dir, file) for file in child_files]
+    files = tf.convert_to_tensor(files, dtype=tf.string)
+    dataset = tf.data.Dataset.from_tensor_slices(files)
+    dataset = dataset.map(load_image_only, num_parallel_calls=tf.data.AUTOTUNE)
 
   else:
-    def data_generator():
-      """Yields (image_path, embedding) pairs without loading all embeddings."""
-      # Open the HDF5 file for reading. The datasets are not loaded into RAM.
-      with h5py.File(hdf5_path, 'r') as hf:
-        # Get handles to the on-disk datasets
-        image_names_ds = hf['image_names']
-        embeddings_ds = hf['sequence_embeddings']
-
-        num_examples = len(image_names_ds)
-
-        # Create a shuffled index to iterate through
-        indices = np.arange(num_examples)
-        np.random.shuffle(indices)
-
-        for i in indices:
-          # Read ONE item from disk at a time. This is very memory-efficient.
-          image_name_bytes = image_names_ds[i]
-          embedding = embeddings_ds[i]
-
-          # Decode the filename from bytes to string for the full path
-          filename = image_name_bytes.decode('utf-8')
-          full_path = os.path.join(image_dir, filename)
-
-          yield full_path, embedding
-
-    # Get the shape and dtype for the output signature directly from the HDF5 file
-    # This is safe and does not load the data.
-    with h5py.File(hdf5_path, 'r') as hf:
-      embedding_shape = hf['sequence_embeddings'].shape[1:]  # e.g., (77, 768)
-      embedding_dtype = hf['sequence_embeddings'].dtype  # e.g., float32
-
-      # Create the dataset using the generator
-    dataset = tf.data.Dataset.from_generator(
-      data_generator,
-      output_signature=(
-        tf.TensorSpec(shape=(), dtype=tf.string),  # for the full_path
-        tf.TensorSpec(shape=embedding_shape, dtype=embedding_dtype)
-      )
-    )
-
-  def map_fn(path, embedding):
-    """The mapping function that loads the image from its path."""
-    image = load_and_preprocess_image(path)
-    return {"image_input": image, "text_embedding_input": embedding}
-
-  # Map the loading and structuring function
-  dataset = dataset.map(map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-
-  # Apply batching and prefetching to the final dataset
-  dataset = dataset.batch(batch_size)
-  dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
+    # case: images + embeddings
+    child_files = embedded_files['image_names']
+    files = [os.path.join(image_dir, file) for file in child_files]
+    files = tf.convert_to_tensor(files, dtype=tf.string)
+    embeddings = tf.convert_to_tensor(embedded_files['embeddings'])
+    dataset = tf.data.Dataset.from_tensor_slices((files, embeddings))
+    dataset = dataset.map(load_image_with_embed, num_parallel_calls=tf.data.AUTOTUNE)
   return dataset
 
 
@@ -240,13 +185,12 @@ def get_dataset(name,
     ds = get_imagenet(subset, read_config)
   elif name == 'custom':
     assert data_dir is not None
-    ds = create_dataset(data_dir,batch_size,embedded_file)
+    ds = create_gen_dataset_from_images(data_dir,embedded_file)
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 
-  print(f"testing {ds}")
   ds = ds.map(
-      lambda x: preprocess(x, train=train), num_parallel_calls=100)
+      lambda x,y: preprocess(x,y, train=train), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:
