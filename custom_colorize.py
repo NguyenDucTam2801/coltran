@@ -189,9 +189,11 @@ def get_store_dir(name, store_dir):
 def text_embedded(captions, batch_size = 1):
     text_encoder = TextEncoder()
     all_embeddings = []
+    print(f"captions:{len(captions)}")
     for i in tqdm(range(0, len(captions), batch_size)):
         batch_texts = captions[i:i + batch_size]
         batch_embeddings = text_encoder.encode_batch(batch_texts)
+        print(batch_embeddings)
         all_embeddings.append(batch_embeddings)
     final_embeddings = np.concatenate(all_embeddings, axis=0)
     logging.info("Encoding complete.")
