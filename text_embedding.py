@@ -42,21 +42,18 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
         batch_texts = captions[i:i + batch_size]
         # print(f"Encoding {batch_texts} captions...")
         try:
-            pooled_embeds, hidden_state_embeds = text_encoder.encode_batch(batch_texts)
+            pooled_embeds = text_encoder.encode_batch(batch_texts)
         except Exception as e:
             print(f"Error batch_textsL {batch_texts}")
             print(f"An error occurred during encoding: {e}")
 
         all_pooled_embeddings.append(pooled_embeds)
-        all_hidden_state_embeddings.append(hidden_state_embeds)
 
     # Concatenate all batch results into two large NumPy arrays
     final_pooled = np.concatenate(all_pooled_embeddings, axis=0)
-    final_hidden_states = np.concatenate(all_hidden_state_embeddings, axis=0)
 
     print("Encoding complete.")
     print("Shape of final pooled embeddings array:", final_pooled.shape)
-    print("Shape of final hidden state embeddings array:", final_hidden_states.shape)
 
     # Save both embedding types in the same file
     np.savez_compressed(
@@ -65,7 +62,6 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
         # Save pooled_output for global conditioning experiments
         pooled_embeddings=final_pooled,
         # Save last_hidden_state for cross-attention experiments
-        sequence_embeddings=final_hidden_states
     )
     print(f"Successfully saved both embedding types to: {output_path}")
 
