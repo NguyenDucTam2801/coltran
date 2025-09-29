@@ -2,7 +2,7 @@ python -m coltran.custom_colorize --config=coltran/configs/colorizer.py --logdir
 cd /d F:\anaconda_projects
 cd /d F:\anaconda_projects\coltran\coltran
 activate tf
-python -m coltran.run --config=coltran/configs/colorizer.py --mode=train --pretrain_dir=../tmp/svt --dataset=custom --data_dir="F:/anaconda_projects/coltran/dataset/flickr30k_images" --npz_dir=./coltran/dataset/embedded.npz --accelerator_type=CPU --dataset=custom --steps_per_summaries=1 --devices_per_worker=8
+python -m coltran.run --config=coltran/configs/colorizer.py --mode=train --pretrain_dir=../tmp/svt --dataset=custom --data_dir=./coltran/dataset/flickr30k_images --npz_dir=./coltran/dataset/embedded.npz --accelerator_type=CPU --dataset=custom --steps_per_summaries=1 --devices_per_worker=8
 python -m tensorflow.python.tools.inspect_checkpoint --file_name="./model-1" --all_tensors=false
 python -m coltran.sample --config=coltran/configs/colorizer.py --mode=sample_test --logdir=coltran/coltran_models/coltran/colorizer
 
