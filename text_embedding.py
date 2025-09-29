@@ -35,7 +35,6 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
 
     text_encoder = TextEncoder()
     all_pooled_embeddings = []
-    all_hidden_state_embeddings = []
 
     print("Starting batch encoding...")
     for i in tqdm(range(0, len(captions), batch_size)):
@@ -60,7 +59,7 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
         output_path,
         image_names=np.array(image_names),
         # Save pooled_output for global conditioning experiments
-        pooled_embeddings=final_pooled,
+        embeddings=final_pooled,
         # Save last_hidden_state for cross-attention experiments
     )
     print(f"Successfully saved both embedding types to: {output_path}")
