@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 def step_with_strategy(step_fn, strategy):
 
   def _step(iterator):
-
     if strategy is None:
       step_fn(next(iterator))
     else:
@@ -44,7 +43,7 @@ def write_config(config, logdir):
     yaml.dump(config.to_dict(), f)
 
 
-def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=-1):
+def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=3):
   """Returns new checkpoint paths, or None if timing out."""
   is_single = isinstance(observe_dirs, str)
   if is_single:
@@ -56,8 +55,6 @@ def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=-1):
   prev_path = prev_path or [None for _ in observe_dirs]
   while True:
     new_path = [tf.train.latest_checkpoint(d) for d in observe_dirs]
-    print(f"prev_path:{prev_path}")
-    print(f"new path: {new_path}")
     if all(a != b for a, b in zip(new_path, prev_path)):
       if is_single:
         latest_ckpt = new_path[0]
@@ -220,8 +217,17 @@ def restore(model, ckpt, ckpt_dir, ema=None):
     logging.info('Restoring from %s.', ckpt_dir_)
     ckpt_.restore(tf.train.latest_checkpoint(ckpt_dir_)).expect_partial()
     if ema:
-      for v in model_.trainable_variables:
-        v.assign(ema.average(v))
+      for v in model.trainable_variables:
+        print(f"v:{type(v)}")
+
+        # unwrap to tf.Variable
+        tf_v = getattr(v, "value", v)
+
+        # print(f"tf_v type: {type(tf_v)}")
+        # print(f"tf_v.ref(): {tf_v.ref()}")
+
+        # assign EMA update
+        tf_v.assign(ema.average(tf_v))
 
 
 def save_nparray_to_disk(filename, nparray):
