@@ -217,7 +217,7 @@ def restore(model, ckpt, ckpt_dir, ema=None):
     logging.info('Restoring from %s.', ckpt_dir_)
     ckpt_.restore(tf.train.latest_checkpoint(ckpt_dir_)).expect_partial()
     if ema:
-      for v in model.trainable_variables:
+      for v in model_.trainable_variables:
         print(f"v:{type(v)}")
 
         # unwrap to tf.Variable
