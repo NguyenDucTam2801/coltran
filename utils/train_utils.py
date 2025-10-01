@@ -227,8 +227,7 @@ def restore(model, ckpt, ckpt_dir, ema=None):
         # print(f"tf_v.ref(): {tf_v.ref()}")
 
         # assign EMA update
-        v.assign(ema.average(v))
-
+        tf_v.assign(ema.average(tf_v))
 
 def save_nparray_to_disk(filename, nparray):
   fdir, _ = os.path.split(filename)
