@@ -376,7 +376,7 @@ def evaluate(logdir, subset):
     num_steps = num_examples // batch_size
 
     for metric_key, metric in metrics.items():
-      metric.reset_states()
+      metric.reset_state()
 
     logging.info('Starting evaluation.')
     done = False
