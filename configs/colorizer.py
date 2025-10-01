@@ -29,8 +29,8 @@ def get_config():
 
   # Training.
   config.batch_size = 1
-  config.max_train_steps = 50000
-  config.save_checkpoint_secs = 900
+  config.max_train_steps = 70000
+  config.save_checkpoint_secs = 60
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
