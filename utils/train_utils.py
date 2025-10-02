@@ -45,6 +45,7 @@ def write_config(config, logdir):
 
 def wait_for_checkpoint(observe_dirs, prev_path=None, max_wait=3):
   """Returns new checkpoint paths, or None if timing out."""
+  print(f"max_wait:{max_wait}")
   is_single = isinstance(observe_dirs, str)
   if is_single:
     observe_dirs = [observe_dirs]
