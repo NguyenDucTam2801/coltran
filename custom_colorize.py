@@ -73,7 +73,7 @@ from absl import logging
 import matplotlib.pyplot as plt
 from ml_collections import config_flags
 import numpy as np
-from coltran import visualizer
+# from coltran import visualizer
 
 from tqdm.auto import tqdm
 

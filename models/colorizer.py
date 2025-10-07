@@ -60,7 +60,7 @@ class ColTranCore(tf.keras.Model):
                        (str(stages), self.stage))
     # FiLM variable
     self.film_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_scale_generator')
-    self.film_shift_generator = layers.Dense(512, activation=None, bias_initializer='zeros', name='film_shift_generator')
+    self.film_shift_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_shift_generator')
 
 
 
@@ -340,7 +340,7 @@ class ColTranCore(tf.keras.Model):
   def blend(self, text_embedding, image_features):
     # 2. Generate the scale and shift vectors from the text embedding
     #    Now we use self.film_scale_generator instead of creating a new layer.
-    scale_vector = tf.nn.sigmoid(self.film_scale_generator(text_embedding))* 0.5 + 0.75
+    scale_vector = self.film_scale_generator(text_embedding)* 0.5 + 0.75
     shift_vector = self.film_shift_generator(text_embedding)
 
     # 3. Reshape them for broadcasting

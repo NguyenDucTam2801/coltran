@@ -215,7 +215,7 @@ def restore(model, ckpt, ckpt_dir, ema=None):
   if not isinstance(model, (tuple, list)):
     model, ckpt, ckpt_dir = [model], [ckpt], [ckpt_dir]
   for model_, ckpt_, ckpt_dir_ in zip(model, ckpt, ckpt_dir):
-    logging.info('Restoring from %s.', ckpt_dir_)
+    logging.info('Restoring from %s.', tf.train.latest_checkpoint(ckpt_dir_))
     ckpt_.restore(tf.train.latest_checkpoint(ckpt_dir_)).expect_partial()
     if ema:
       for v in model_.trainable_variables:
@@ -228,7 +228,7 @@ def restore(model, ckpt, ckpt_dir, ema=None):
         # print(f"tf_v.ref(): {tf_v.ref()}")
 
         # assign EMA update
-        tf_v.assign(ema.average(tf_v))
+        v.assign(ema.average(v))
 
 def save_nparray_to_disk(filename, nparray):
   fdir, _ = os.path.split(filename)
