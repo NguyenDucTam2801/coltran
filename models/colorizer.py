@@ -62,7 +62,9 @@ class ColTranCore(tf.keras.Model):
     self.film_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_scale_generator')
     self.film_shift_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_shift_generator')
 
-
+    # Keep your original FiLM layers for the "color" part
+    self.color_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='color_scale')
+    self.color_shift_generator = layers.Dense(512, activation=None, bias_initializer='zeros', name='color_shift')
 
   @property
   def metric_keys(self):
@@ -91,7 +93,8 @@ class ColTranCore(tf.keras.Model):
     gray = tf.image.rgb_to_grayscale(inputs)
     z = self.encoder(gray)
     if captions is not None:
-      z = self.blend(text_embedding=captions, image_features=z)
+      z = self.blend(text_embedding=captions["noun"], image_features=z,
+                          scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
     # text_embedding =tf.reshape(captions, (captions.shape[0], 1, 1, 512))
     # z=z+text_embedding
 
@@ -99,12 +102,12 @@ class ColTranCore(tf.keras.Model):
       enc_logits = self.parallel_dense(z)
       enc_logits = tf.expand_dims(enc_logits, axis=-2)
 
-    dec_logits = self.decoder(inputs, z, training=training)
+    dec_logits = self.decoder(inputs, z, training=training,adj_embedding=captions["adj"])
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
 
-  def decoder(self, inputs, z, training):
+  def decoder(self, inputs, z, training, adj_embedding=None):
     """Decodes grayscale representation and masked colors into logits."""
     # (H, W, 512) preprocessing.
     # quantize to 3 bits.
@@ -121,7 +124,19 @@ class ColTranCore(tf.keras.Model):
     h_upper = self.outer_decoder((h_dec, z), training=training)
     h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
 
-    activations = self.final_norm(h_inner)
+    # Blend with adj embedding
+    scale_vector = self.color_scale_generator(adj_embedding) * 0.5 + 0.75
+    shift_vector = self.color_shift_generator(adj_embedding)
+
+    # 3. Reshape them for broadcasting
+    # Use tf.shape to handle dynamic batch sizes correctly inside tf.function
+    batch_size = tf.shape(adj_embedding)[0]
+    scale = tf.reshape(scale_vector, (batch_size, 1, 1, 512))
+    shift = tf.reshape(shift_vector, (batch_size, 1, 1, 512))
+    final_form = h_inner * scale + shift
+
+    # Final activation
+    activations = self.final_norm(final_form)
     logits = self.final_dense(activations)
     return tf.expand_dims(logits, axis=-2)
 
@@ -180,7 +195,8 @@ class ColTranCore(tf.keras.Model):
     z_gray = self.encoder(gray_cond, training=False)
 
     if captions is not None:
-      z_gray = self.blend(text_embedding=captions, image_features=z_gray)
+      z_gray = self.blend(text_embedding=captions["noun"], image_features=z_gray,
+                          scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
 
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
@@ -189,12 +205,12 @@ class ColTranCore(tf.keras.Model):
 
       output['parallel'] = parallel_image
 
-    image, proba = self.autoregressive_sample(z_gray=z_gray, mode=mode)
+    image, proba = self.autoregressive_sample(z_gray=z_gray, mode=mode, adjective_embedding=captions["adj"])
     output['auto_%s' % mode] = image
     output['proba'] = proba
     return output
 
-  def autoregressive_sample(self, z_gray, mode='sample'):
+  def autoregressive_sample(self, z_gray, adjective_embedding=None ,mode='sample'):
     """Generates pixel-by-pixel.
 
     1. The encoder is run once per-channel.
@@ -251,7 +267,7 @@ class ColTranCore(tf.keras.Model):
                                          training=False)
 
         pixel_sample, pixel_embed, pixel_proba = self.act_logit_sample_embed(
-            activations, col, mode=mode)
+            activations, col, mode=mode,adjective_embedding=adjective_embedding)
         proba_row.append(pixel_proba)
         gen_row.append(pixel_sample)
 
@@ -271,12 +287,13 @@ class ColTranCore(tf.keras.Model):
           inputs=(channel_cache.cache, z_gray), training=False)
 
     image = tf.stack(pixel_samples, axis=1)
+    print(f"Image shape:{image.shape}")
     image = self.post_process_image(image)
 
     image_proba = tf.stack(pixel_probas, axis=1)
     return image, image_proba
 
-  def act_logit_sample_embed(self, activations, col_ind, mode='sample'):
+  def act_logit_sample_embed(self, activations, col_ind,adjective_embedding=None, mode='sample'):
     """Converts activations[col_ind] to the output pixel.
 
     Activation -> Logit -> Sample -> Embedding.
@@ -292,7 +309,17 @@ class ColTranCore(tf.keras.Model):
     """
     batch_size = activations.shape[0]
     pixel_activation = tf.expand_dims(activations[:, :, col_ind], axis=-2)
-    pixel_logits = self.final_dense(self.final_norm(pixel_activation))
+
+    # Add blend color adj
+    final_activations = pixel_activation
+
+    # --- INJECT ADJECTIVE/COLOR CONDITIONING HERE ---
+    if adjective_embedding is not None:
+        # Use a separate blend function for color/adjectives
+        final_activations = self.blend(text_embedding=adjective_embedding, image_features=final_activations,
+                          scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
+
+    pixel_logits = self.final_dense(self.final_norm(final_activations))
     pixel_logits = tf.squeeze(pixel_logits, axis=[1, 2])
     pixel_proba = tf.nn.softmax(pixel_logits, axis=-1)
 
@@ -319,7 +346,7 @@ class ColTranCore(tf.keras.Model):
   def get_color_palette(self,n_bits=3):
     """
     Generates a color palette for 3-bit RGB quantization (8 values per channel, 512 total colors).
-
+    Blend with noun embedding
     Returns:
         palette: tf.Tensor of shape [512, 3], dtype=tf.int32.
                   Each row is an RGB color in [0, 255].
@@ -337,11 +364,12 @@ class ColTranCore(tf.keras.Model):
     # Flatten to [512, 3] and return
     return tf.reshape(palette, (-1, 3))
 
-  def blend(self, text_embedding, image_features):
+  def blend(self, text_embedding, image_features,scale_vector,shift_vector):
     # 2. Generate the scale and shift vectors from the text embedding
     #    Now we use self.film_scale_generator instead of creating a new layer.
-    scale_vector = self.film_scale_generator(text_embedding)* 0.5 + 0.75
-    shift_vector = self.film_shift_generator(text_embedding)
+
+    scale_vector = scale_vector(text_embedding)* 0.5 + 0.75
+    shift_vector = shift_vector(text_embedding)
 
     # 3. Reshape them for broadcasting
     # Use tf.shape to handle dynamic batch sizes correctly inside tf.function

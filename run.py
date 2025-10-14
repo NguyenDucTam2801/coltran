@@ -29,7 +29,8 @@ from absl import flags
 from absl import logging
 
 from ml_collections import config_flags
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 import numpy as np
 
@@ -168,7 +169,10 @@ def build(config, batch_size, is_train=False):
     if downsample:
       h, w = downsample_res, downsample_res
     zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
-    caption = tf.zeros((batch_size,512),dtype=tf.float32)
+    caption = {
+      "noun": tf.zeros((batch_size,512),dtype=tf.float32),
+      "adj":tf.zeros((batch_size,512),dtype=tf.float32)
+    }
     model = colorizer.ColTranCore(config.model)
     model(zero, caption ,training=is_train)
 
@@ -221,7 +225,7 @@ def train(logdir):
   # DATASET CREATION.
   logging.info('Building dataset.')
   train_dataset = train_utils.dataset_with_strategy(input_fn, strategy)
-
+  print(f"train_dataset: {train_dataset}")
 
   data_iterator = iter(train_dataset)
 

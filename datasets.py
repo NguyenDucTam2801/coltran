@@ -18,7 +18,8 @@
 import functools
 import os
 import re
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 from coltran.utils import datasets_utils
 import numpy as np
@@ -97,17 +98,23 @@ def get_gen_dataset(data_dir, batch_size):
 
 def create_gen_dataset_from_images(image_dir, embedded_files=None):
   """Creates a dataset from the provided directory."""
-  embedded_files=np.load(embedded_files)
+  if embedded_files is not None:
+    embedded_files=np.load(embedded_files)
   def load_image_only(path):
     image_str = tf.io.read_file(path)
     image = tf.image.decode_image(image_str, channels=3)
     return image
 
-  def load_image_with_embed(path, embedded_captions):
+  def load_image_with_embed(path, embeddings_noun, embeddings_adj):
     image_str = tf.io.read_file(path)
     image = tf.image.decode_image(image_str, channels=3)
-    return image, embedded_captions
-
+    return {
+        "image": image,
+        "embedded_captions": {
+            "noun": embeddings_noun,
+            "adj": embeddings_adj
+        }
+    }
   if embedded_files is None:
     # case: only images
     child_files = tf.io.gfile.listdir(image_dir)
@@ -122,8 +129,12 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     child_files = embedded_files['image_names']
     files = [os.path.join(image_dir, file) for file in child_files]
     files = tf.convert_to_tensor(files, dtype=tf.string)
-    embeddings = tf.convert_to_tensor(embedded_files['embeddings'])
-    dataset = tf.data.Dataset.from_tensor_slices((files, embeddings))
+    embeddings_noun = tf.convert_to_tensor(embedded_files['embeddings_noun'])
+    embeddings_adj = tf.convert_to_tensor(embedded_files['embeddings_adj'])
+    print(f"embeddings_adj:{embeddings_adj.shape}")
+    print(f"embeddings_noun:{embeddings_noun.shape}")
+
+    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_noun, embeddings_adj))
     dataset = dataset.map(load_image_with_embed, num_parallel_calls=tf.data.AUTOTUNE)
   return dataset
 
@@ -189,9 +200,8 @@ def get_dataset(name,
     ds = create_gen_dataset_from_images(data_dir,embedded_file)
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
-
   ds = ds.map(
-      lambda x,y: preprocess(x,y, train=train), num_parallel_calls=100)
+      lambda x: preprocess(x["image"], x["embedded_captions"], train=train), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:

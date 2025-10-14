@@ -19,7 +19,8 @@ import os
 import time
 from absl import logging
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v2 as tf
 import yaml
 from tensorflow.python.framework import dtypes
 

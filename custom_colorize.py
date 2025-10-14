@@ -87,6 +87,7 @@ from coltran.utils import base_utils
 from coltran.utils import datasets_utils
 from coltran.utils import train_utils
 import sys
+import spacy
 
 
 flags.DEFINE_string('img_dir', None,
@@ -153,8 +154,12 @@ def build_model(config):
   zero_slice = tf.zeros((1, 256, 256, 1), dtype=tf.int32)
 
   if name == 'coltran_core':
+    captions={
+      "noun": tf.zeros((1,512),dtype=tf.float32),
+      "adj":tf.zeros((1,512),dtype=tf.float32)
+    }
     model = colorizer.ColTranCore(config.model)
-    model(zero_64 ,training=False)
+    model(zero_64,captions=captions,training=False)
   elif name == 'color_upsampler':
     model = upsampler.ColorUpsampler(config.model)
     model(inputs=zero_64, inputs_slice=zero_64_slice, training=False)
@@ -189,16 +194,48 @@ def get_store_dir(name, store_dir):
 def text_embedded(captions, batch_size = 1):
     text_encoder = TextEncoder()
     all_embeddings = []
+    nlp = spacy.load("en_core_web_sm")
     print(f"captions:{len(captions)}")
+    all_embeddings_noun = []
+    all_embeddings_adjective = []
     for i in tqdm(range(0, len(captions), batch_size)):
         batch_texts = captions[i:i + batch_size]
-        batch_embeddings = text_encoder.encode_batch(batch_texts)
-        print(batch_embeddings)
-        all_embeddings.append(batch_embeddings)
-    final_embeddings = np.concatenate(all_embeddings, axis=0)
+        doc=nlp.pipe(batch_texts)
+        nouns = []
+        adjectives = []
+        for token in doc:
+            noun_temp = []
+            adjective_temp = []
+            for t in token:
+                # print(f"t:{t}")
+                if t.pos_ == "NOUN":
+                    noun_temp.append(t.text)
+                elif t.pos_ == "ADJ":
+                    adjective_temp.append(t.text)
+
+            # print(f"noun_temp:{noun_temp}")
+            # print(f"adjective_temp:{adjective_temp}")
+            # print("-----------------")
+            nouns.append(", ".join(noun_temp))
+            adjectives.append(", ".join(adjective_temp))
+        print(f"Noun:{nouns}")
+        print(f"Adjective:{adjectives}")
+        pooled_embeds_noun = text_encoder.encode_batch(nouns)
+        pooled_embeds_adjective = text_encoder.encode_batch(adjectives)
+        all_embeddings_noun.append(pooled_embeds_noun)
+        all_embeddings_adjective.append(pooled_embeds_adjective)
+
+    final_noun_embedding = np.concatenate(all_embeddings_noun, axis=0)
+    final_adjective_embedding = np.concatenate(all_embeddings_adjective, axis=0)
+
     logging.info("Encoding complete.")
-    logging.info("Shape of final embeddings array:", final_embeddings.shape)
-    return final_embeddings
+    logging.info("Shape of final final_noun_embedding:", final_noun_embedding.shape)
+    logging.info("Shape of final final_adjective_embedding:", final_adjective_embedding.shape)
+
+    return {
+        "noun":final_noun_embedding,
+        "adj":final_adjective_embedding
+    }
 
 
 def main(_):

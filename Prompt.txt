@@ -8,3 +8,5 @@ python -m coltran.sample --config=coltran/configs/colorizer.py --mode=sample_tes
 
 // text encoding
 python text_embedding.py --csv_dir ./dataset/results.csv --output_dir ./dataset/embedded.npz --batch_size 16
+
+---- python -m wget
