@@ -29,8 +29,7 @@ from absl import flags
 from absl import logging
 
 from ml_collections import config_flags
-# import tensorflow as tf
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import tensorflow_datasets as tfds
 import numpy as np
 

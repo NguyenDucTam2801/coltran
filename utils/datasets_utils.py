@@ -15,8 +15,7 @@
 
 """Utils for datasets loading."""
 
-# import tensorflow as tf
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 def change_resolution(image, res, method='area'):
   image = tf.image.resize(image, method=method, antialias=True,

@@ -30,8 +30,8 @@ def get_config():
   # Training.
   config.batch_size = 1
   config.max_train_steps = 70000
-  config.save_checkpoint_secs = 600
-  config.num_epochs = -1
+  config.save_checkpoint_secs = 900
+  config.num_epochs = 1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
   config.eval_batch_size = 7
@@ -43,7 +43,7 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'rmsprop'
-  config.optimizer.learning_rate = 1e-3
+  config.optimizer.learning_rate = 3e-4
 
   # Model.
   config.model = ConfigDict()

@@ -57,17 +57,17 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
             for t in token:
                 # print(f"t:{t}")
                 if t.pos_ == "NOUN":
-                    noun_temp.append(t.text)
+                    noun_temp.append(t.text.lower())
                 elif t.pos_ == "ADJ":
-                    adjective_temp.append(t.text)
+                    adjective_temp.append(t.text.lower())
 
             # print(f"noun_temp:{noun_temp}")
             # print(f"adjective_temp:{adjective_temp}")
             # print("-----------------")
-            nouns.append(", ".join(noun_temp)+".")
-            adjectives.append(", ".join(adjective_temp)+".")
-        # print("nouns:", nouns)
-        # print("adj:", adjectives)
+            nouns.append((", ".join(noun_temp) if len(noun_temp)>0 else "photo")+".")
+            adjectives.append((", ".join(adjective_temp) if len(adjective_temp)>0 else "colored")+".")
+        print("nouns:", nouns)
+        print("adj:", adjectives)
         pooled_embeds_noun = text_encoder.encode_batch(nouns)
         pooled_embeds_adjective = text_encoder.encode_batch(adjectives)
         # print(f"pooled_embeds_noun:{pooled_embeds_noun.shape}")

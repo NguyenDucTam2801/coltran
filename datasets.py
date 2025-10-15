@@ -18,8 +18,7 @@
 import functools
 import os
 import re
-# import tensorflow as tf
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import tensorflow_datasets as tfds
 from coltran.utils import datasets_utils
 import numpy as np
@@ -128,6 +127,7 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     print(f"embedded files:{embedded_files.keys()}")
     child_files = embedded_files['image_names']
     files = [os.path.join(image_dir, file) for file in child_files]
+    # print(f"files:{files[:5]}")
     files = tf.convert_to_tensor(files, dtype=tf.string)
     embeddings_noun = tf.convert_to_tensor(embedded_files['embeddings_noun'])
     embeddings_adj = tf.convert_to_tensor(embedded_files['embeddings_adj'])

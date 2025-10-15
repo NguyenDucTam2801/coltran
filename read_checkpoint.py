@@ -1,5 +1,4 @@
-# import tensorflow as tf
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import argparse
 import os
 

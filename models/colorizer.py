@@ -59,12 +59,12 @@ class ColTranCore(tf.keras.Model):
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
     # FiLM variable
-    self.film_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_scale_generator')
-    self.film_shift_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='film_shift_generator')
+    self.film_scale_generator = layers.Dense(512, activation='sigmoid', name='film_scale_generator')
+    self.film_shift_generator = layers.Dense(512, activation=None, name='film_shift_generator')
 
     # Keep your original FiLM layers for the "color" part
-    self.color_scale_generator = layers.Dense(512, activation='sigmoid', bias_initializer='zeros', name='color_scale')
-    self.color_shift_generator = layers.Dense(512, activation=None, bias_initializer='zeros', name='color_shift')
+    self.color_scale_generator = layers.Dense(512, activation='sigmoid', name='color_scale')
+    self.color_shift_generator = layers.Dense(512, activation=None, name='color_shift')
 
   @property
   def metric_keys(self):
@@ -95,6 +95,8 @@ class ColTranCore(tf.keras.Model):
     if captions is not None:
       z = self.blend(text_embedding=captions["noun"], image_features=z,
                           scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
+
+      print(f"z shape after blend(Noun):{z.shape}")
     # text_embedding =tf.reshape(captions, (captions.shape[0], 1, 1, 512))
     # z=z+text_embedding
 
@@ -124,20 +126,12 @@ class ColTranCore(tf.keras.Model):
     h_upper = self.outer_decoder((h_dec, z), training=training)
     h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
 
-    # Blend with adj embedding
-    scale_vector = self.color_scale_generator(adj_embedding) * 0.5 + 0.75
-    shift_vector = self.color_shift_generator(adj_embedding)
-
-    # 3. Reshape them for broadcasting
-    # Use tf.shape to handle dynamic batch sizes correctly inside tf.function
-    batch_size = tf.shape(adj_embedding)[0]
-    scale = tf.reshape(scale_vector, (batch_size, 1, 1, 512))
-    shift = tf.reshape(shift_vector, (batch_size, 1, 1, 512))
-    final_form = h_inner * scale + shift
-
+    final_form= self.blend(text_embedding=adj_embedding, image_features=h_inner,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
+    print(f"Final form shape after blend(Adj):{final_form.shape}")
     # Final activation
     activations = self.final_norm(final_form)
     logits = self.final_dense(activations)
+    print(f"tf.expand_dims(logits, axis=-2):{tf.expand_dims(logits, axis=-2).shape}")
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
