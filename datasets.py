@@ -124,7 +124,7 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
 
   else:
     # case: images + embeddings
-    print(f"embedded files:{embedded_files.keys()}")
+    print(f"embedded files:{embedded_files.files}")
     child_files = embedded_files['image_names']
     files = [os.path.join(image_dir, file) for file in child_files]
     # print(f"files:{files[:5]}")
