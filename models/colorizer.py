@@ -122,9 +122,10 @@ class ColTranCore(tf.keras.Model):
 
     h_dec = self.pixel_embed_layer(labels)
     h_upper = self.outer_decoder((h_dec, z), training=training)
-    blend_outer= self.blend(text_embedding=adj_embedding, image_features=h_upper,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
     # print(f"h_upper shape:{h_upper.shape}")
-    h_inner = self.inner_decoder((h_dec, blend_outer, z), training=training)
+    h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
+    if adj_embedding is None:
+        h_inner= self.blend(text_embedding=adj_embedding, image_features=h_inner,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
 
     # print(f"Final form shape after blend(Adj):{final_form.shape}")
     # Final activation
@@ -280,7 +281,7 @@ class ColTranCore(tf.keras.Model):
           inputs=(channel_cache.cache, z_gray), training=False)
 
     image = tf.stack(pixel_samples, axis=1)
-    print(f"Image shape:{image.shape}")
+    # print(f"Image shape:{image.shape}")
     image = self.post_process_image(image)
 
     image_proba = tf.stack(pixel_probas, axis=1)
