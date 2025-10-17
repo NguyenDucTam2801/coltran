@@ -7,6 +7,6 @@ python -m tensorflow.python.tools.inspect_checkpoint --file_name="./model-1" --a
 python -m coltran.sample --config=coltran/configs/colorizer.py --mode=sample_test --logdir=coltran/coltran_models/coltran/colorizer
 
 // text encoding
-python text_embedding.py --csv_dir ./dataset/results.csv --output_dir ./dataset/embedded.npz --batch_size 16
+python text_embedding.py --csv_dir F:/archive/flickr30k_images/results.csv --output_dir ./dataset/embedded.npz --batch_size 16
 
 ---- python -m wget

@@ -169,7 +169,7 @@ def build(config, batch_size, is_train=False):
       h, w = downsample_res, downsample_res
     zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
     caption = {
-      "noun": tf.zeros((batch_size,512),dtype=tf.float32),
+      "caption": tf.zeros((batch_size,512),dtype=tf.float32),
       "adj":tf.zeros((batch_size,512),dtype=tf.float32)
     }
     model = colorizer.ColTranCore(config.model)

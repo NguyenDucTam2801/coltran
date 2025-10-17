@@ -104,13 +104,13 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     image = tf.image.decode_image(image_str, channels=3)
     return image
 
-  def load_image_with_embed(path, embeddings_noun, embeddings_adj):
+  def load_image_with_embed(path, embeddings_caption, embeddings_adj):
     image_str = tf.io.read_file(path)
     image = tf.image.decode_image(image_str, channels=3)
     return {
         "image": image,
         "embedded_captions": {
-            "noun": embeddings_noun,
+            "caption": embeddings_caption,
             "adj": embeddings_adj
         }
     }
@@ -129,12 +129,10 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     files = [os.path.join(image_dir, file) for file in child_files]
     # print(f"files:{files[:5]}")
     files = tf.convert_to_tensor(files, dtype=tf.string)
-    embeddings_noun = tf.convert_to_tensor(embedded_files['embeddings_noun'])
+    embeddings_caption = tf.convert_to_tensor(embedded_files['embeddings_caption'])
     embeddings_adj = tf.convert_to_tensor(embedded_files['embeddings_adj'])
-    print(f"embeddings_adj:{embeddings_adj.shape}")
-    print(f"embeddings_noun:{embeddings_noun.shape}")
 
-    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_noun, embeddings_adj))
+    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_caption, embeddings_adj))
     dataset = dataset.map(load_image_with_embed, num_parallel_calls=tf.data.AUTOTUNE)
   return dataset
 

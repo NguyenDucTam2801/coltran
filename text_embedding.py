@@ -42,50 +42,39 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
     print(f"Found {len(captions)} total captions to encode.")
 
     text_encoder = TextEncoder()
-    all_pooled_embeddings_noun = []
+    all_pooled_embeddings_caption=[]
     all_pooled_embeddings_adjective = []
 
     print("Starting batch encoding...")
     for i in tqdm(range(0, len(captions), batch_size)):
         batch_texts = captions[i:i+batch_size]
         doc=nlp.pipe(batch_texts)
-        nouns = []
         adjectives = []
         for token in doc:
-            noun_temp = []
             adjective_temp = []
             for t in token:
-                # print(f"t:{t}")
-                if t.pos_ == "NOUN":
-                    noun_temp.append(t.text.lower())
-                elif t.pos_ == "ADJ":
+                if t.pos_ == "ADJ":
                     adjective_temp.append(t.text.lower())
-
-            # print(f"noun_temp:{noun_temp}")
             # print(f"adjective_temp:{adjective_temp}")
-            # print("-----------------")
-            nouns.append((", ".join(noun_temp) if len(noun_temp)>0 else "photo")+".")
             adjectives.append((", ".join(adjective_temp) if len(adjective_temp)>0 else "colored")+".")
-        # print("nouns:", nouns)
-        # print("adj:", adjectives)
-        pooled_embeds_noun = text_encoder.encode_batch(nouns)
+
+        pooled_embeds_caption = text_encoder.encode_batch(batch_texts)
         pooled_embeds_adjective = text_encoder.encode_batch(adjectives)
-        # print(f"pooled_embeds_noun:{pooled_embeds_noun.shape}")
         # print(f"pooled_embeds_adjective:{pooled_embeds_adjective.shape}")
 
-        all_pooled_embeddings_noun.append(pooled_embeds_noun)
+        all_pooled_embeddings_caption.append(pooled_embeds_caption)
         all_pooled_embeddings_adjective.append(pooled_embeds_adjective)
 
 
 
 
     # Concatenate all batch results into two large NumPy arrays
-    final_pooled_noun = np.concatenate(all_pooled_embeddings_noun, axis=0)
+    final_pooled_caption = np.concatenate(all_pooled_embeddings_caption,axis=0)
     final_pooled_adjective = np.concatenate(all_pooled_embeddings_adjective, axis=0)
 
 
     print("Encoding complete.")
-    print("Shape of final pooled embeddings noun array:", final_pooled_noun.shape)
+    print("Shape of final pooled embeddings captions array:", final_pooled_caption.shape)
     print("Shape of final pooled embeddings adjectives array:", final_pooled_adjective.shape)
 
     # Save both embedding types in the same file
@@ -93,7 +82,7 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
         output_path,
         image_names=np.array(image_names),
         # Save pooled_output for global conditioning experiments
-        embeddings_noun=final_pooled_noun,
+        embeddings_caption=final_pooled_caption,
         embeddings_adj=final_pooled_adjective,
 
 

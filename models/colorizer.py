@@ -93,12 +93,10 @@ class ColTranCore(tf.keras.Model):
     gray = tf.image.rgb_to_grayscale(inputs)
     z = self.encoder(gray)
     if captions is not None:
-      z = self.blend(text_embedding=captions["noun"], image_features=z,
+      z = self.blend(text_embedding=captions["caption"], image_features=z,
                           scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
 
-      print(f"z shape after blend(Noun):{z.shape}")
-    # text_embedding =tf.reshape(captions, (captions.shape[0], 1, 1, 512))
-    # z=z+text_embedding
+      # print(f"z shape after blend(Noun):{z.shape}")
 
     if self.is_parallel_loss:
       enc_logits = self.parallel_dense(z)
@@ -124,14 +122,15 @@ class ColTranCore(tf.keras.Model):
 
     h_dec = self.pixel_embed_layer(labels)
     h_upper = self.outer_decoder((h_dec, z), training=training)
-    h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
+    blend_outer= self.blend(text_embedding=adj_embedding, image_features=h_upper,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
+    # print(f"h_upper shape:{h_upper.shape}")
+    h_inner = self.inner_decoder((h_dec, blend_outer, z), training=training)
 
-    final_form= self.blend(text_embedding=adj_embedding, image_features=h_inner,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
-    print(f"Final form shape after blend(Adj):{final_form.shape}")
+    # print(f"Final form shape after blend(Adj):{final_form.shape}")
     # Final activation
-    activations = self.final_norm(final_form)
+    activations = self.final_norm(h_inner)
     logits = self.final_dense(activations)
-    print(f"tf.expand_dims(logits, axis=-2):{tf.expand_dims(logits, axis=-2).shape}")
+    # print(f"tf.expand_dims(logits, axis=-2):{tf.expand_dims(logits, axis=-2).shape}")
     return tf.expand_dims(logits, axis=-2)
 
   def image_loss(self, logits, labels):
@@ -189,7 +188,7 @@ class ColTranCore(tf.keras.Model):
     z_gray = self.encoder(gray_cond, training=False)
 
     if captions is not None:
-      z_gray = self.blend(text_embedding=captions["noun"], image_features=z_gray,
+      z_gray = self.blend(text_embedding=captions["caption"], image_features=z_gray,
                           scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
 
     if self.is_parallel_loss:
