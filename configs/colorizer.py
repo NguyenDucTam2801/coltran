@@ -43,7 +43,7 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'rmsprop'
-  config.optimizer.learning_rate = 1e-5
+  config.optimizer.learning_rate = 3e-5
 
   # Model.
   config.model = ConfigDict()
