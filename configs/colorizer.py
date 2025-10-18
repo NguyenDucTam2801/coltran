@@ -29,7 +29,7 @@ def get_config():
 
   # Training.
   config.batch_size = 8
-  config.max_train_steps = 450000
+  config.max_train_steps = 100000
   config.save_checkpoint_secs = 900
   config.num_epochs = 1
   config.polyak_decay = 0.999
