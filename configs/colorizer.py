@@ -28,8 +28,8 @@ def get_config():
   config.resolution = [256, 256]
 
   # Training.
-  config.batch_size = 8
-  config.max_train_steps = 100000
+  config.batch_size = 4
+  config.max_train_steps = 10000
   config.save_checkpoint_secs = 900
   config.num_epochs = 1
   config.polyak_decay = 0.999
