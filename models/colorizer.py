@@ -122,7 +122,9 @@ class ColTranCore(tf.keras.Model):
 
     h_dec = self.pixel_embed_layer(labels)
     h_upper = self.outer_decoder((h_dec, z), training=training)
-    # print(f"h_upper shape:{h_upper.shape}")
+    if adj_embedding is not None:
+        h_upper= self.blend(text_embedding=adj_embedding, image_features=h_upper,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)
+
     h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
     if adj_embedding is not None:
         h_inner= self.blend(text_embedding=adj_embedding, image_features=h_inner,scale_vector=self.color_scale_generator,shift_vector=self.color_shift_generator)

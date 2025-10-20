@@ -76,7 +76,7 @@ def build_optimizer(config):
   if optim_type == 'rmsprop':
     optimizer = tf.keras.optimizers.RMSprop(**optim_config)
   elif optim_type == 'adam':
-    optimizer = tf.keras.optimizers.Adam(**optim_config)
+    optimizer = tf.keras.optimizers.AdamW(**optim_config)
   elif optim_type == 'sgd':
     optimizer = tf.keras.optimizers.SGD(**optim_config)
   else:
