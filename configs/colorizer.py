@@ -42,7 +42,7 @@ def get_config():
   config.encoder_loss_factor = 0.01
 
   config.optimizer = ConfigDict()
-  config.optimizer.type = 'rmsprop'
+  config.optimizer.type = 'adam'
   config.optimizer.learning_rate = 3e-4
 
   # Model.
