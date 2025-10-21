@@ -88,11 +88,12 @@ def get_config():
   config.model.decoder.cond_att_act = 'identity'
 
   config.sample = ConfigDict()
-  config.sample.log_dir = ''
+  config.sample.log_dir = './result'
   config.sample.batch_size = 1
   config.sample.mode = 'sample'
   config.sample.num_samples = 1
   config.sample.num_outputs = 1
   config.sample.skip_batches = 0
   config.sample.gen_file = 'gen0'
+  config.sample.gen_data_dir=None
   return config

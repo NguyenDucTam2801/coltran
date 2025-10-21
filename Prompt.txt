@@ -10,3 +10,6 @@ python -m coltran.sample --config=coltran/configs/colorizer.py --mode=sample_tes
 python text_embedding.py --csv_dir F:/archive/flickr30k_images/results.csv --output_dir ./dataset/embedded.npz --batch_size 16
 
 ---- python -m wget
+
+// caption split
+python .\split_datset_custom.py --csv_dir="F:/archive/flickr30k_images/results.csv" --save_dir="F:/archive/flickr30k_images/split_csv"

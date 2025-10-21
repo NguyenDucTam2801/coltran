@@ -42,12 +42,14 @@ def resize_to_square(image, resolution=32, train=True):
   return image
 
 
-def preprocess(example, caption=None ,train=True, resolution=256):
+def preprocess(example ,train=True, resolution=256):
   """Apply random crop (or) central crop to the image."""
   image = example
+  print(f"example in preprocess:{example.keys()}")
 
   is_label = False
   if isinstance(example, dict):
+    # print("hello from preprocess")
     image = example['image']
     is_label = 'label' in example.keys()
 
@@ -57,7 +59,7 @@ def preprocess(example, caption=None ,train=True, resolution=256):
   example_copy = dict()
   example_copy['image'] = image
   example_copy['targets'] = image
-  example_copy['caption'] = caption
+  example_copy['caption'] = example["embedded_captions"]
   if is_label:
     example_copy['label'] = example['label']
   return example_copy
@@ -104,15 +106,19 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     image = tf.image.decode_image(image_str, channels=3)
     return image
 
-  def load_image_with_embed(path, embeddings_caption, embeddings_adj):
+  def load_image_with_embed(path, embedding_caption, embedding_adj,child_file):
     image_str = tf.io.read_file(path)
     image = tf.image.decode_image(image_str, channels=3)
+    # print(f"child_files in map:{child_files}")
+    label = tf.strings.regex_replace(child_file, ".jpg", "")
+
     return {
         "image": image,
         "embedded_captions": {
-            "caption": embeddings_caption,
-            "adj": embeddings_adj
-        }
+            "caption": embedding_caption,
+            "adj": embedding_adj
+        },
+        'label': label
     }
   if embedded_files is None:
     # case: only images
@@ -126,13 +132,14 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     # case: images + embeddings
     print(f"embedded files:{embedded_files.files}")
     child_files = embedded_files['image_names']
+    print(f"child_files:{child_files}")
     files = [os.path.join(image_dir, file) for file in child_files]
     # print(f"files:{files[:5]}")
     files = tf.convert_to_tensor(files, dtype=tf.string)
     embeddings_caption = tf.convert_to_tensor(embedded_files['embeddings_caption'])
     embeddings_adj = tf.convert_to_tensor(embedded_files['embeddings_adj'])
 
-    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_caption, embeddings_adj))
+    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_caption, embeddings_adj,child_files))
     dataset = dataset.map(load_image_with_embed, num_parallel_calls=tf.data.AUTOTUNE)
   return dataset
 
@@ -199,7 +206,7 @@ def get_dataset(name,
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
   ds = ds.map(
-      lambda x: preprocess(x["image"], x["embedded_captions"], train=train), num_parallel_calls=100)
+      lambda x: preprocess(x, train=train), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:

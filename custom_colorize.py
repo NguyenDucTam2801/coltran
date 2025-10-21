@@ -259,7 +259,7 @@ def main(_):
   else:
       captions = FLAGS.captions
       caption_list = captions.split(sep="|")
-      text_encode = text_embedded(caption_list, batch_size)
+      text_embedding = text_embedded(caption_list, batch_size)
 
 
   dataset = create_grayscale_dataset_from_images(FLAGS.img_dir, batch_size)
@@ -284,7 +284,7 @@ def main(_):
 
     if model_name == 'coltran_core':
       # visualizer.visualize_coltran_stage(gray_64,"grayscale_low")
-      out = model.sample(gray_64,captions=text_encode ,mode='sample')
+      out = model.sample(gray_64,captions=text_embedding ,mode='sample')
       samples = out['auto_sample']
     elif model_name == 'color_upsampler':
       prev_gen = base_utils.convert_bits(prev_gen, n_bits_in=8, n_bits_out=3)

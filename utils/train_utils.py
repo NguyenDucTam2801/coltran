@@ -219,7 +219,7 @@ def restore(model, ckpt, ckpt_dir, ema=None):
     ckpt_.restore(tf.train.latest_checkpoint(ckpt_dir_)).expect_partial()
     if ema:
       for v in model_.trainable_variables:
-        print(f"v:{type(v)}")
+        # print(f"v:{type(v)}")
 
         # unwrap to tf.Variable
         tf_v = getattr(v, "value", v)

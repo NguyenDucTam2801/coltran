@@ -57,6 +57,9 @@ flags.DEFINE_string('summaries_log_dir', 'summaries', 'Summaries parent.')
 flags.DEFINE_integer('steps_per_summaries', 100, 'Steps per summaries.')
 flags.DEFINE_integer('devices_per_worker', 1, 'Number of devices per worker.')
 flags.DEFINE_integer('num_workers', 1, 'Number workers.')
+flags.DEFINE_enum('dataset', 'imagenet', ['imagenet', 'custom'], 'Dataset')
+flags.DEFINE_string('data_dir', None, 'Data directory for custom images.')
+flags.DEFINE_string('npz_dir', None, 'npz directory for embedded captions.')
 config_flags.DEFINE_config_file(
     'config',
     default='test_configs/colorizer.py',
@@ -91,8 +94,13 @@ def build(config, batch_size, is_train=False):
     if downsample:
       h, w = downsample_res, downsample_res
     zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    caption = {
+      "caption": tf.zeros((batch_size, 512), dtype=tf.float32),
+      "adj": tf.zeros((batch_size, 512), dtype=tf.float32)
+    }
     model = colorizer.ColTranCore(config.model)
-    model(zero, training=is_train)
+    model(zero, caption, training=is_train)
 
   c = 1 if is_train else 3
   if config.model.name == 'color_upsampler':
@@ -151,8 +159,11 @@ def store_samples(data, config, logdir, gen_dataset=None):
   logging.info('Producing sample after %d training steps.', num_steps_v)
 
   logging.info(gen_dataset)
+
   for batch_ind in range(num_outputs // batch_size):
     next_data = data.next()
+    print(f"next_data keys: {next_data.keys()}", file=sys.stderr)
+    # labels = next_data['label'].numpy()
     labels = next_data['label'].numpy()
 
     if gen_dataset is not None:
@@ -189,7 +200,8 @@ def store_samples(data, config, logdir, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, inputs=low_res,
                               mode=sample_mode)
       else:
-        output = model.sample(gray_cond=curr_gray, mode=sample_mode)
+        text_embedding = next_data['caption']
+        output = model.sample(gray_cond=curr_gray,captions=text_embedding ,mode=sample_mode)
       logging.info('Done sampling')
 
       for out_key, out_item in output.items():
@@ -227,10 +239,13 @@ def sample(logdir, subset):
 
   # Get ground truth dataset for grayscale image.
   tf_dataset = datasets.get_dataset(
-      name=config.dataset,
-      config=config,
-      batch_size=batch_size,
-      subset=subset)
+    name=config.dataset,
+    config=config,
+    batch_size=batch_size,
+    subset=subset,
+    data_dir=FLAGS.data_dir,
+    embedded_file=FLAGS.npz_dir
+  )
   tf_dataset = tf_dataset.skip(skip_batches)
   data_iter = iter(tf_dataset)
 

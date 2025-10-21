@@ -59,12 +59,12 @@ class ColTranCore(tf.keras.Model):
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
     # FiLM variable
-    self.film_scale_generator = layers.Dense(512, activation='sigmoid', name='film_scale_generator')
-    self.film_shift_generator = layers.Dense(512, activation=None, name='film_shift_generator')
+    self.film_scale_generator = layers.Dense(self.num_symbols, activation='sigmoid', name='film_scale_generator')
+    self.film_shift_generator = layers.Dense(self.num_symbols, activation=None, name='film_shift_generator')
 
     # Keep your original FiLM layers for the "color" part
-    self.color_scale_generator = layers.Dense(512, activation='sigmoid', name='color_scale')
-    self.color_shift_generator = layers.Dense(512, activation=None, name='color_shift')
+    self.color_scale_generator = layers.Dense(self.num_symbols, activation='sigmoid', name='color_scale')
+    self.color_shift_generator = layers.Dense(self.num_symbols, activation=None, name='color_shift')
 
   @property
   def metric_keys(self):
@@ -185,7 +185,7 @@ class ColTranCore(tf.keras.Model):
     captions = inputs_dict['caption']
     return self(inputs=inputs, captions=captions ,training=training)
 
-  def sample(self, gray_cond,captions=None ,mode='argmax'):
+  def sample(self, gray_cond, captions=None ,mode='argmax'):
     output = {}
 
     z_gray = self.encoder(gray_cond, training=False)
