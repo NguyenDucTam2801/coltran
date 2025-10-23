@@ -71,6 +71,7 @@ config_flags.DEFINE_config_file(
 
 FLAGS = flags.FLAGS
 
+tf.config.run_functions_eagerly(True)
 
 def restore_checkpoint(model, ema, strategy, latest_ckpt=None, optimizer=None):
   if optimizer is None:
@@ -264,6 +265,7 @@ def train(logdir):
   if optimizer.iterations.numpy() == 0:
     checkpoint_name = checkpoint.save()
     logging.info('Saved checkpoint to %s', checkpoint_name)
+    # model.save_weights(os.path.join(logdir, 'model_weights'))
 
   train_summary_dir = os.path.join(logdir, 'train_summaries')
   writer = tf.summary.create_file_writer(train_summary_dir)

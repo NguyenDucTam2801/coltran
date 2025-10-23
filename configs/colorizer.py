@@ -28,9 +28,9 @@ def get_config():
   config.resolution = [256, 256]
 
   # Training.
-  config.batch_size = 4
+  config.batch_size = 1
   config.max_train_steps = 10000
-  config.save_checkpoint_secs = 900
+  config.save_checkpoint_secs = 600
   config.num_epochs = 1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
@@ -43,7 +43,7 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'adam'
-  config.optimizer.learning_rate = 3e-4
+  config.optimizer.learning_rate = 1e-4
 
   # Model.
   config.model = ConfigDict()
@@ -91,8 +91,8 @@ def get_config():
   config.sample.log_dir = './result'
   config.sample.batch_size = 1
   config.sample.mode = 'sample'
-  config.sample.num_samples = 1
-  config.sample.num_outputs = 1
+  config.sample.num_samples = 10
+  config.sample.num_outputs = 10
   config.sample.skip_batches = 0
   config.sample.gen_file = 'gen0'
   config.sample.gen_data_dir=None

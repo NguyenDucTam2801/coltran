@@ -18,7 +18,7 @@ def split_dataset(csv_path, save_path):
     train_df, temp_df = train_test_split(df, test_size=0.2, random_state=42, shuffle=True)
 
     # 3️⃣ Split temp into validation (10%) and test (10%)
-    val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
+    val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42,shuffle=true)
 
     # 4️⃣ Save them
     train_df.to_csv(save_path+"/flickr30k_train.csv", index=False,sep='|')

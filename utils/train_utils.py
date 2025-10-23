@@ -74,11 +74,11 @@ def build_optimizer(config):
   optim_config = dict(config.optimizer)
   optim_type = optim_config.pop('type', 'rmsprop')
   if optim_type == 'rmsprop':
-    optimizer = tf.keras.optimizers.RMSprop(**optim_config)
+    optimizer = tf.keras.optimizers.RMSprop(**optim_config,clipnorm=1.0)
   elif optim_type == 'adam':
-    optimizer = tf.keras.optimizers.AdamW(**optim_config)
+    optimizer = tf.keras.optimizers.AdamW(**optim_config,clipnorm=1.0)
   elif optim_type == 'sgd':
-    optimizer = tf.keras.optimizers.SGD(**optim_config)
+    optimizer = tf.keras.optimizers.SGD(**optim_config,clipnorm=1.0)
   else:
     raise ValueError('Unknown optimizer %s.' % optim_type)
   return optimizer
