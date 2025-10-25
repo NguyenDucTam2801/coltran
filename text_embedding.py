@@ -35,8 +35,10 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
     # df.dropna(subset=['comment'], inplace=True)
     if len(df) < initial_rows:
         print(f"Warning: Removed {initial_rows - len(df)} rows with missing captions.")
+    df["comment"] = df["comment"].fillna("").astype(str)
 
     captions = df['comment'].tolist()
+
     image_names = df['image_name'].tolist()
 
     print(f"Found {len(captions)} total captions to encode.")
