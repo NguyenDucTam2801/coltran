@@ -80,6 +80,7 @@ def preprocess_flickr30k_captions(csv_path, output_path, batch_size=64):
     # Save both embedding types in the same file
     np.savez_compressed(
         output_path,
+        captions=np.array(captions),
         image_names=np.array(image_names),
         # Save pooled_output for global conditioning experiments
         embeddings_caption=final_pooled_caption,

@@ -8,6 +8,7 @@ models/__pycache__/
 utils/__pycache__/
 checkpoint/
 ckpt/
+results/
 
 # Ignore model and dataset folders
 coltran_models/
