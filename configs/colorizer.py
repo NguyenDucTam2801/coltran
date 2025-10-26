@@ -43,7 +43,7 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'adam'
-  config.optimizer.learning_rate = 1e-4
+  config.optimizer.learning_rate = 3e-4
 
   # Model.
   config.model = ConfigDict()

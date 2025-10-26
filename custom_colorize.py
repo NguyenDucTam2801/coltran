@@ -154,12 +154,12 @@ def build_model(config):
   zero_slice = tf.zeros((1, 256, 256, 1), dtype=tf.int32)
 
   if name == 'coltran_core':
-    captions={
+    embedded_captions={
       "caption": tf.zeros((1,512),dtype=tf.float32),
       "adj":tf.zeros((1,512),dtype=tf.float32)
     }
     model = colorizer.ColTranCore(config.model)
-    model(zero_64,captions=captions,training=False)
+    model(zero_64,embedded_captions=embedded_captions,training=False)
   elif name == 'color_upsampler':
     model = upsampler.ColorUpsampler(config.model)
     model(inputs=zero_64, inputs_slice=zero_64_slice, training=False)

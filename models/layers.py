@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The Google Research Authors.
+# Copyright 2025 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,9 +24,7 @@ import math
 import operator
 import numpy as np
 import tensorflow.compat.v2 as tf
-# from tensorflow.compat.v2.keras import layers
-from tensorflow.keras import layers
-
+from tensorflow.compat.v2.keras import layers
 from coltran.utils import att_utils
 from coltran.utils import base_utils
 
@@ -202,7 +200,6 @@ class PositionEmbed(layers.Layer):
 
   def call(self, inputs):
     out = inputs
-    # print(f"Out: {out.shape}")
     for e in self.embeddings:
       out += e
     return out

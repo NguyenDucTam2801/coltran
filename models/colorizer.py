@@ -28,10 +28,12 @@ from coltran.models import core
 from coltran.models import layers as coltran_layers
 from coltran.utils import base_utils
 from coltran import visualizer
+from coltran import text_to_color_hex
 import matplotlib.pyplot as plt
 import uuid
 import os
 import cv2
+import spacy
 
 tf.config.run_functions_eagerly(True)
 
@@ -66,36 +68,36 @@ class ColTranCore(tf.keras.Model):
       raise ValueError('Expected stage to be in %s, got %s' %
                        (str(stages), self.stage))
 
-    initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
-
-    # Cross Attention layer to condition on Grayscale encode
-    self.cross_attention_layer_grayscale_encode = tf.keras.layers.MultiHeadAttention(
-      num_heads=8,  # A common choice, can be tuned
-      key_dim=self.hidden_size // 8,  # The dimension of each head's Q, K, V
-      output_shape=self.hidden_size,  # Ensure the output has the same dimension as the input
-      name="grayscale_text_cross_attention",
-      kernel_initializer=initializer,
-    )
-
-    # Every attention block needs a LayerNormalization and Dropout for stability.
-    self.cross_attention_norm_grayscale_encode = tf.keras.layers.LayerNormalization()
-    self.cross_attention_dropout_grayscale_encode = tf.keras.layers.Dropout(0.1)  # Dropout rate can be tuned
-
-    # Cross Attention layer to condition on inner decode
-    self.cross_attention_layer_inner_decode = tf.keras.layers.MultiHeadAttention(
-      num_heads=8,  # A common choice, can be tuned
-      key_dim=self.hidden_size // 8,  # The dimension of each head's Q, K, V
-      output_shape=self.hidden_size,  # Ensure the output has the same dimension as the input
-      name="grayscale_text_cross_attention",
-      kernel_initializer=initializer,
-    )
-
-    # Every attention block needs a LayerNormalization and Dropout for stability.
-    self.cross_attention_norm_inner_decode = tf.keras.layers.LayerNormalization()
-    self.cross_attention_dropout_inner_decode = tf.keras.layers.Dropout(0.1)  # Dropout rate can be tuned
-
-    self.color_scale_generator_inner = layers.Dense(self.hidden_size, activation='sigmoid', name='color_scale')
-    self.color_shift_generator_inner = layers.Dense(self.hidden_size, activation=None, name='color_shift')
+    # initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
+    #
+    # # Cross Attention layer to condition on Grayscale encode
+    # self.cross_attention_layer_grayscale_encode = tf.keras.layers.MultiHeadAttention(
+    #   num_heads=8,  # A common choice, can be tuned
+    #   key_dim=self.hidden_size // 8,  # The dimension of each head's Q, K, V
+    #   output_shape=self.hidden_size,  # Ensure the output has the same dimension as the input
+    #   name="grayscale_text_cross_attention",
+    #   kernel_initializer=initializer,
+    # )
+    #
+    # # Every attention block needs a LayerNormalization and Dropout for stability.
+    # self.cross_attention_norm_grayscale_encode = tf.keras.layers.LayerNormalization()
+    # self.cross_attention_dropout_grayscale_encode = tf.keras.layers.Dropout(0.1)  # Dropout rate can be tuned
+    #
+    # # Cross Attention layer to condition on inner decode
+    # self.cross_attention_layer_inner_decode = tf.keras.layers.MultiHeadAttention(
+    #   num_heads=8,  # A common choice, can be tuned
+    #   key_dim=self.hidden_size // 8,  # The dimension of each head's Q, K, V
+    #   output_shape=self.hidden_size,  # Ensure the output has the same dimension as the input
+    #   name="grayscale_text_cross_attention",
+    #   kernel_initializer=initializer,
+    # )
+    #
+    # # Every attention block needs a LayerNormalization and Dropout for stability.
+    # self.cross_attention_norm_inner_decode = tf.keras.layers.LayerNormalization()
+    # self.cross_attention_dropout_inner_decode = tf.keras.layers.Dropout(0.1)  # Dropout rate can be tuned
+    #
+    # self.color_scale_generator_inner = layers.Dense(self.hidden_size, activation='sigmoid', name='color_scale')
+    # self.color_shift_generator_inner = layers.Dense(self.hidden_size, activation=None, name='color_shift')
 
   @property
   def metric_keys(self):
@@ -119,44 +121,44 @@ class ColTranCore(tf.keras.Model):
         units=self.num_symbols, name='auto_logits')
     self.final_norm = layers.LayerNormalization()
 
-  def call(self, inputs, captions = None ,training=True):
+  def call(self, inputs, embedded_captions = None ,training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     gray = tf.image.rgb_to_grayscale(inputs)
     z = self.encoder(gray)
     conditioned_z=z
 
-    if captions is not None:
-
-      captions_float = tf.cast(captions["caption"], dtype=tf.float32)
-      batch_size, height, width, _ = tf.unstack(tf.shape(conditioned_z))
-
-      # 1. --- Reshape Inputs for Attention ---
-      # Reshape image features from (B, H, W, C) to a sequence (B, H*W, C)
-      image_seq = tf.reshape(z, [batch_size, -1, self.hidden_size])
-
-      # Promote the single text embedding to a sequence of length 1
-      text_seq = tf.expand_dims(captions_float, 1)
-
-      # 2. --- Apply Cross-Attention (The Sub-layer) ---
-      attention_output = self.cross_attention_layer_grayscale_encode(
-        query=image_seq,
-        value=text_seq,
-        key=text_seq,
-        training=training  # Pass the training flag
-      )
-
-      # 3. --- Apply Dropout ---
-      attention_output = self.cross_attention_dropout_grayscale_encode(attention_output, training=training)
-
-      # 4. --- Apply Residual Connection (The "Add") ---
-      # This is the most important fix. Add the output back to the input.
-      attention_result_seq = image_seq + attention_output
-
-      # 5. --- Apply Layer Normalization (The "Norm") ---
-      conditioned_z_seq = self.cross_attention_norm_grayscale_encode(attention_result_seq)
-
-      # 6. --- Reshape back to Image Format ---
-      conditioned_z = tf.reshape(conditioned_z_seq, [batch_size, 64, 64, self.hidden_size])
+    # if embedded_captions is not None:
+    #
+    #   captions_float = tf.cast(embedded_captions["caption"], dtype=tf.float32)
+    #   batch_size, height, width, _ = tf.unstack(tf.shape(conditioned_z))
+    #
+    #   # 1. --- Reshape Inputs for Attention ---
+    #   # Reshape image features from (B, H, W, C) to a sequence (B, H*W, C)
+    #   image_seq = tf.reshape(z, [batch_size, -1, self.hidden_size])
+    #
+    #   # Promote the single text embedding to a sequence of length 1
+    #   text_seq = tf.expand_dims(captions_float, 1)
+    #
+    #   # 2. --- Apply Cross-Attention (The Sub-layer) ---
+    #   attention_output = self.cross_attention_layer_grayscale_encode(
+    #     query=image_seq,
+    #     value=text_seq,
+    #     key=text_seq,
+    #     training=training  # Pass the training flag
+    #   )
+    #
+    #   # 3. --- Apply Dropout ---
+    #   attention_output = self.cross_attention_dropout_grayscale_encode(attention_output, training=training)
+    #
+    #   # 4. --- Apply Residual Connection (The "Add") ---
+    #   # This is the most important fix. Add the output back to the input.
+    #   attention_result_seq = image_seq + attention_output
+    #
+    #   # 5. --- Apply Layer Normalization (The "Norm") ---
+    #   conditioned_z_seq = self.cross_attention_norm_grayscale_encode(attention_result_seq)
+    #
+    #   # 6. --- Reshape back to Image Format ---
+    #   conditioned_z = tf.reshape(conditioned_z_seq, [batch_size, 64, 64, self.hidden_size])
 
     # visualizer.export_logits_channels(logits_tensor=conditioned_z, output_dir="./logs/conditioned_z/", prefix="conditioned_z")
 
@@ -164,12 +166,12 @@ class ColTranCore(tf.keras.Model):
       enc_logits = self.parallel_dense(conditioned_z)
       enc_logits = tf.expand_dims(enc_logits, axis=-2)
 
-    dec_logits = self.decoder(inputs, conditioned_z, training=training,captions=captions)
+    dec_logits = self.decoder(inputs, conditioned_z, training=training,embedded_captions=embedded_captions)
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
 
-  def decoder(self, inputs, z, training, captions=None):
+  def decoder(self, inputs, z, training, embedded_captions=None):
     """Decodes grayscale representation and masked colors into logits."""
     # (H, W, 512) preprocessing.
     # quantize to 3 bits.
@@ -188,27 +190,27 @@ class ColTranCore(tf.keras.Model):
 
     final_activations = h_inner
 
-    if captions is not None:
-      batch_size, height, width, _ = tf.unstack(tf.shape(h_upper))
-
-      caption_embedding = tf.cast(captions["caption"], dtype=tf.float32)
-      caption_seq = tf.expand_dims(caption_embedding, 1)
-
-      # Reshape the final features for cross-attention
-      h_inner_seq = tf.reshape(h_inner, [batch_size, -1, self.hidden_size])
-
-      # --- Apply ONE Conditioning Step: Cross-Attention on h_inner ---
-      attention_output = self.cross_attention_layer_inner_decode(
-        query=h_inner_seq,
-        value=caption_seq,
-        key=caption_seq,
-        training=training
-      )
-      attention_output = self.cross_attention_dropout_inner_decode(attention_output, training=training)
-      attention_result = h_inner_seq + attention_output
-      conditioned_seq = self.cross_attention_norm_inner_decode(attention_result)
-
-      final_activations = tf.reshape(conditioned_seq, [batch_size, height, width, self.hidden_size])
+    # if embedded_captions is not None:
+    #   batch_size, height, width, _ = tf.unstack(tf.shape(h_upper))
+    #
+    #   caption_embedding = tf.cast(embedded_captions["caption"], dtype=tf.float32)
+    #   caption_seq = tf.expand_dims(caption_embedding, 1)
+    #
+    #   # Reshape the final features for cross-attention
+    #   h_inner_seq = tf.reshape(h_inner, [batch_size, -1, self.hidden_size])
+    #
+    #   # --- Apply ONE Conditioning Step: Cross-Attention on h_inner ---
+    #   attention_output = self.cross_attention_layer_inner_decode(
+    #     query=h_inner_seq,
+    #     value=caption_seq,
+    #     key=caption_seq,
+    #     training=training
+    #   )
+    #   attention_output = self.cross_attention_dropout_inner_decode(attention_output, training=training)
+    #   attention_result = h_inner_seq + attention_output
+    #   conditioned_seq = self.cross_attention_norm_inner_decode(attention_result)
+    #
+    #   final_activations = tf.reshape(conditioned_seq, [batch_size, height, width, self.hidden_size])
 
     # visualizer.export_logits_channels(logits_tensor=h_inner, output_dir="./logs/h_inner/", prefix="h_inner")
     # Final activation
@@ -261,12 +263,25 @@ class ColTranCore(tf.keras.Model):
       inputs = inputs_dict['targets_%d' % downsample_res]
     else:
       inputs = inputs_dict['targets']
-
-    captions = inputs_dict['caption']
-    result=self(inputs=inputs, captions=captions ,training=training)
+    embedded_captions = inputs_dict["embedded_captions"]
+    result=self(inputs=inputs, embedded_captions=embedded_captions ,training=training)
+    # print(f"inputs_dict['label'].numpy()[0].decode('utf-8'):{inputs_dict['label'].numpy()[0].decode('utf-8')}")
 
     # save input images for visualization
     if visualize:
+      # Text 2 color hex
+      caption = inputs_dict['captions'].numpy()[0].decode('utf-8')
+      print(f"inputs_dict['captions']:{caption}")
+      hex_palette=text_to_color_hex.filter_color_words(caption=caption)
+      print(f"Generated hex_palette:{hex_palette}")
+      if len(hex_palette) != 0:
+        coarse_palette_rgb = text_to_color_hex.get_coarse_color_palette_tf()
+        target_indices = text_to_color_hex.find_closest_coarse_color_indices(hex_palette, coarse_palette_rgb)
+        my_indices = target_indices.numpy().tolist()
+        print(f"Hex Palette: {hex_palette}")
+        print(f"Closest Coarse Color Indices (0-511): {target_indices.numpy()}")
+
+      # Visualize and save the generated image
       output_dir = "./coltran/results/logits/"
       os.makedirs(output_dir, exist_ok=True)
       base_name = inputs_dict['label'].numpy()[0].decode('utf-8')
@@ -280,9 +295,14 @@ class ColTranCore(tf.keras.Model):
       logits = result[0]
       probs = tf.squeeze(logits,axis=-2)[0]
       probs = tf.reshape(probs, [-1, probs.shape[-1]])
-      predicted_indices = self.top_p_sample(probs)
+      # print(f"probs shape after:{probs.shape}")
+      # predicted_indices = self.top_p_sample(probs)
+      probs=tf.random.categorical(probs, num_samples=1)
+      probs=tf.reshape(probs, [64, 64])
+      # print(f"probs:{probs.shape}")
 
-      cv2.imwrite(output_path, tf.reshape(self.post_process_image(predicted_indices), [64, 64, 3]).numpy())
+
+      cv2.imwrite(output_path, tf.reshape(self.post_process_image(probs), [64, 64, 3]).numpy())
     return result
 
   def sample(self, gray_cond, captions=None ,mode='argmax',training=False):
@@ -291,39 +311,39 @@ class ColTranCore(tf.keras.Model):
     z_gray = self.encoder(gray_cond, training=training)
     conditioned_z=z_gray
 
-    if captions is not None:
-      # z_gray = self.blend(text_embedding=captions["caption"], image_features=z_gray,
-      #                     scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
-      captions_float = tf.cast(captions["caption"], dtype=tf.float32)
-      batch_size, height, width, _ = tf.unstack(tf.shape(conditioned_z))
-
-      # 1. --- Reshape Inputs for Attention ---
-      # Reshape image features from (B, H, W, C) to a sequence (B, H*W, C)
-      image_seq = tf.reshape(z_gray, [batch_size, -1, self.hidden_size])
-
-      # Promote the single text embedding to a sequence of length 1
-      text_seq = tf.expand_dims(captions_float, 1)
-
-      # 2. --- Apply Cross-Attention (The Sub-layer) ---
-      attention_output = self.cross_attention_layer_grayscale_encode(
-        query=image_seq,
-        value=text_seq,
-        key=text_seq,
-        training=training  # Pass the training flag
-      )
-
-      # 3. --- Apply Dropout ---
-      attention_output = self.cross_attention_dropout_grayscale_encode(attention_output, training=training)
-
-      # 4. --- Apply Residual Connection (The "Add") ---
-      # This is the most important fix. Add the output back to the input.
-      attention_result_seq = image_seq + attention_output
-
-      # 5. --- Apply Layer Normalization (The "Norm") ---
-      h_inner_seq = self.cross_attention_norm_grayscale_encode(attention_result_seq)
-
-      # 6. --- Reshape back to Image Format ---
-      conditioned_z = tf.reshape(h_inner_seq, [batch_size, 64, 64, self.hidden_size])
+    # if captions is not None:
+    #   # z_gray = self.blend(text_embedding=captions["caption"], image_features=z_gray,
+    #   #                     scale_vector=self.film_scale_generator,shift_vector=self.film_shift_generator)
+    #   captions_float = tf.cast(captions["caption"], dtype=tf.float32)
+    #   batch_size, height, width, _ = tf.unstack(tf.shape(conditioned_z))
+    #
+    #   # 1. --- Reshape Inputs for Attention ---
+    #   # Reshape image features from (B, H, W, C) to a sequence (B, H*W, C)
+    #   image_seq = tf.reshape(z_gray, [batch_size, -1, self.hidden_size])
+    #
+    #   # Promote the single text embedding to a sequence of length 1
+    #   text_seq = tf.expand_dims(captions_float, 1)
+    #
+    #   # 2. --- Apply Cross-Attention (The Sub-layer) ---
+    #   attention_output = self.cross_attention_layer_grayscale_encode(
+    #     query=image_seq,
+    #     value=text_seq,
+    #     key=text_seq,
+    #     training=training  # Pass the training flag
+    #   )
+    #
+    #   # 3. --- Apply Dropout ---
+    #   attention_output = self.cross_attention_dropout_grayscale_encode(attention_output, training=training)
+    #
+    #   # 4. --- Apply Residual Connection (The "Add") ---
+    #   # This is the most important fix. Add the output back to the input.
+    #   attention_result_seq = image_seq + attention_output
+    #
+    #   # 5. --- Apply Layer Normalization (The "Norm") ---
+    #   h_inner_seq = self.cross_attention_norm_grayscale_encode(attention_result_seq)
+    #
+    #   # 6. --- Reshape back to Image Format ---
+    #   conditioned_z = tf.reshape(h_inner_seq, [batch_size, 64, 64, self.hidden_size])
 
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(conditioned_z)
@@ -380,10 +400,7 @@ class ColTranCore(tf.keras.Model):
 
     pixel_samples, pixel_probas = [], []
     if captions is not None:
-      adj_embedding = tf.cast(captions["adj"], dtype=tf.float32)
       caption_embedding=tf.cast(captions["caption"], dtype=tf.float32)
-
-      caption_seq = tf.expand_dims(caption_embedding, 1)
 
     for row in range(height):
       row_cond_channel = tf.expand_dims(z_gray[:, row], axis=1)
@@ -415,6 +432,7 @@ class ColTranCore(tf.keras.Model):
       print(f"pixel_samples len:{len(pixel_samples)}")
 
       # after a row is generated, recomputes the context for the next row.
+      # upper_context[row] = self_attention(channel_cache[:row_index])
       upper_context = self.outer_decoder(
           inputs=(channel_cache.cache, z_gray), training=False)
 
@@ -456,7 +474,6 @@ class ColTranCore(tf.keras.Model):
       pixel_sample = tf.squeeze(pixel_sample, axis=-1)
     elif mode == 'argmax':
       pixel_sample = tf.argmax(pixel_logits, axis=-1, output_type=tf.int32)
-
     pixel_sample_expand = tf.reshape(pixel_sample, [batch_size, 1, 1])
     pixel_one_hot = tf.one_hot(pixel_sample_expand, depth=self.num_symbols)
     pixel_embed = self.pixel_embed_layer(pixel_one_hot)

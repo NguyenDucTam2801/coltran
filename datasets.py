@@ -55,11 +55,12 @@ def preprocess(example ,train=True, resolution=256):
 
   image = resize_to_square(image, train=train, resolution=resolution)
 
-  # keepng 'file_name' key creates some undebuggable TPU Error.
+  # keeping 'file_name' key creates some undebuggable TPU Error.
   example_copy = dict()
   example_copy['image'] = image
   example_copy['targets'] = image
-  example_copy['caption'] = example["embedded_captions"]
+  example_copy['embedded_captions'] = example["embedded_captions"]
+  example_copy['captions'] = example["captions"]
   if is_label:
     example_copy['label'] = example['label']
   return example_copy
@@ -106,7 +107,7 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     image = tf.image.decode_image(image_str, channels=3)
     return image
 
-  def load_image_with_embed(path, embedding_caption, embedding_adj,child_file):
+  def load_image_with_embed(path, embedding_caption, embedding_adj,child_file,captions):
     image_str = tf.io.read_file(path)
     image = tf.image.decode_image(image_str, channels=3)
     # print(f"child_files in map:{child_files}")
@@ -114,6 +115,7 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
 
     return {
         "image": image,
+        "captions": captions,
         "embedded_captions": {
             "caption": embedding_caption,
             "adj": embedding_adj
@@ -138,8 +140,9 @@ def create_gen_dataset_from_images(image_dir, embedded_files=None):
     files = tf.convert_to_tensor(files, dtype=tf.string)
     embeddings_caption = tf.convert_to_tensor(embedded_files['embeddings_caption'])
     embeddings_adj = tf.convert_to_tensor(embedded_files['embeddings_adj'])
+    captions=tf.convert_to_tensor(embedded_files['captions'])
 
-    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_caption, embeddings_adj,child_files))
+    dataset = tf.data.Dataset.from_tensor_slices((files,embeddings_caption, embeddings_adj,child_files,captions))
     dataset = dataset.map(load_image_with_embed, num_parallel_calls=tf.data.AUTOTUNE)
   return dataset
 
