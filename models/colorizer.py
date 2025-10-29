@@ -223,6 +223,7 @@ class ColTranCore(tf.keras.Model):
     # print(f"labels:{labels.shape}, logits:{logits.shape}")
     height, width = labels.shape[1:3]
     logits = tf.squeeze(logits, axis=-2)
+    # print(f"labels shape:{labels.shape}, logits shape after squeeze:{logits.shape}")
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
     loss = tf.reduce_mean(loss, axis=0)
@@ -262,7 +263,10 @@ class ColTranCore(tf.keras.Model):
       inputs = inputs_dict['targets_%d' % downsample_res]
     else:
       inputs = inputs_dict['targets']
-    embedded_captions = inputs_dict["embedded_captions"]
+
+    embedded_captions=None
+    if "embedded_captions" in inputs_dict.keys():
+      embedded_captions = inputs_dict["embedded_captions"]
     result=self(inputs=inputs, embedded_captions=embedded_captions ,training=training)
     # print(f"inputs_dict['label'].numpy()[0].decode('utf-8'):{inputs_dict['label'].numpy()[0].decode('utf-8')}")
 

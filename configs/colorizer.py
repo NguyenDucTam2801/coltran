@@ -43,7 +43,7 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'adam'
-  config.optimizer.learning_rate = 1e-4
+  config.optimizer.learning_rate = 3e-4
 
   # Model.
   config.model = ConfigDict()
@@ -64,7 +64,7 @@ def get_config():
   config.model.decoder = ConfigDict()
   config.model.decoder.ff_size = 512
   config.model.decoder.hidden_size = 512
-  config.model.decoder.resolution = [64, 64]
+  config.model.decoder.resolution = [128, 128]
   config.model.decoder.num_heads = 4
   config.model.decoder.num_inner_layers = 2
   config.model.decoder.num_outer_layers = 2

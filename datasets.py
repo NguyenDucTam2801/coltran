@@ -45,22 +45,22 @@ def resize_to_square(image, resolution=32, train=True):
 def preprocess(example ,train=True, resolution=256):
   """Apply random crop (or) central crop to the image."""
   image = example
-  print(f"example in preprocess:{example.keys()}")
-
+  example_copy = dict()
   is_label = False
   if isinstance(example, dict):
     # print("hello from preprocess")
     image = example['image']
+    example_copy['embedded_captions'] = example["embedded_captions"]
+    example_copy['captions'] = example["captions"]
     is_label = 'label' in example.keys()
 
   image = resize_to_square(image, train=train, resolution=resolution)
 
   # keeping 'file_name' key creates some undebuggable TPU Error.
-  example_copy = dict()
+
   example_copy['image'] = image
   example_copy['targets'] = image
-  example_copy['embedded_captions'] = example["embedded_captions"]
-  example_copy['captions'] = example["captions"]
+
   if is_label:
     example_copy['label'] = example['label']
   return example_copy
