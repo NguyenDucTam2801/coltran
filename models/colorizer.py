@@ -32,7 +32,6 @@ from coltran import text_to_color_hex
 import matplotlib.pyplot as plt
 import uuid
 import os
-import cv2
 import spacy
 
 tf.config.run_functions_eagerly(True)
@@ -95,7 +94,7 @@ class ColTranCore(tf.keras.Model):
     # # Every attention block needs a LayerNormalization and Dropout for stability.
     # self.cross_attention_norm_inner_decode = tf.keras.layers.LayerNormalization()
     # self.cross_attention_dropout_inner_decode = tf.keras.layers.Dropout(0.1)  # Dropout rate can be tuned
-    #
+
     # self.color_scale_generator_inner = layers.Dense(self.hidden_size, activation='sigmoid', name='color_scale')
     # self.color_shift_generator_inner = layers.Dense(self.hidden_size, activation=None, name='color_shift')
 
@@ -124,7 +123,7 @@ class ColTranCore(tf.keras.Model):
   def call(self, inputs, embedded_captions = None ,training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     gray = tf.image.rgb_to_grayscale(inputs)
-    z = self.encoder(gray)
+    z = self.encoder(gray, training=training)
     conditioned_z=z
 
     # if embedded_captions is not None:
@@ -271,14 +270,14 @@ class ColTranCore(tf.keras.Model):
     if visualize:
       # Text 2 color hex
       caption = inputs_dict['captions'].numpy()[0].decode('utf-8')
+      print(f"label:{inputs_dict['label'].numpy()[0].decode('utf-8')}")
       print(f"inputs_dict['captions']:{caption}")
       hex_palette=text_to_color_hex.filter_color_words(caption=caption)
       print(f"Generated hex_palette:{hex_palette}")
       if len(hex_palette) != 0:
         coarse_palette_rgb = text_to_color_hex.get_coarse_color_palette_tf()
         target_indices = text_to_color_hex.find_closest_coarse_color_indices(hex_palette, coarse_palette_rgb)
-        my_indices = target_indices.numpy().tolist()
-        print(f"Hex Palette: {hex_palette}")
+        # print(f"Hex Palette: {hex_palette}")
         print(f"Closest Coarse Color Indices (0-511): {target_indices.numpy()}")
 
       # Visualize and save the generated image
@@ -298,11 +297,11 @@ class ColTranCore(tf.keras.Model):
       # print(f"probs shape after:{probs.shape}")
       # predicted_indices = self.top_p_sample(probs)
       probs=tf.random.categorical(probs, num_samples=1)
-      probs=tf.reshape(probs, [64, 64])
+      probs=tf.reshape(probs, [self.config.resolution,self.config.resolution])
       # print(f"probs:{probs.shape}")
 
 
-      cv2.imwrite(output_path, tf.reshape(self.post_process_image(probs), [64, 64, 3]).numpy())
+      plt.imsave(output_path, tf.reshape(self.post_process_image(probs), [self.config.resolution,self.config.resolution, 3]).numpy())
     return result
 
   def sample(self, gray_cond, captions=None ,mode='argmax',training=False):
@@ -460,9 +459,9 @@ class ColTranCore(tf.keras.Model):
     batch_size = activations.shape[0]
     pixel_activation = tf.expand_dims(activations[:, :, col_ind], axis=-2)
     final_activations = pixel_activation
-    if adj_embedding is not None:
-        # Apply the simpler, more stable FiLM conditioning here for adjectives
-        final_activations = self.blend_adj_inner(adj_embedding, pixel_activation)
+    # if adj_embedding is not None:
+    #     # Apply the simpler, more stable FiLM conditioning here for adjectives
+    #     final_activations = self.blend_adj_inner(adj_embedding, pixel_activation)
 
     pixel_logits = self.final_dense(self.final_norm(final_activations))
     pixel_logits = tf.squeeze(pixel_logits, axis=[1, 2])
@@ -508,15 +507,15 @@ class ColTranCore(tf.keras.Model):
     # Flatten to [512, 3] and return
     return tf.reshape(palette, (-1, 3))
 
-  def blend_adj_inner(self, adj_embedding, image_features):
-    scale_vec = tf.nn.sigmoid(self.color_scale_generator_inner(adj_embedding)) + 0.5
-    shift_vec = self.color_shift_generator_inner(adj_embedding)
-
-    batch_size = tf.shape(image_features)[0]
-    scale = tf.reshape(scale_vec, (batch_size, 1, 1, self.hidden_size))
-    shift = tf.reshape(shift_vec, (batch_size, 1, 1, self.hidden_size))
-
-    return image_features * scale + shift
+  # def blend_adj_inner(self, adj_embedding, image_features):
+  #   scale_vec = tf.nn.sigmoid(self.color_scale_generator_inner(adj_embedding)) + 0.5
+  #   shift_vec = self.color_shift_generator_inner(adj_embedding)
+  #
+  #   batch_size = tf.shape(image_features)[0]
+  #   scale = tf.reshape(scale_vec, (batch_size, 1, 1, self.hidden_size))
+  #   shift = tf.reshape(shift_vec, (batch_size, 1, 1, self.hidden_size))
+  #
+  #   return image_features * scale + shift
 
   def top_p_sample(self,logits, p=0.95, temperature=1.0):
     """

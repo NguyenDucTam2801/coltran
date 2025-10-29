@@ -24,12 +24,12 @@ def get_config():
   # Data.
   config.dataset = 'custom'
   config.downsample = True
-  config.downsample_res = 64
+  config.downsample_res = 128
   config.resolution = [256, 256]
 
   # Training.
   config.batch_size = 1
-  config.max_train_steps = 10000
+  config.max_train_steps = 100
   config.save_checkpoint_secs = 600
   config.num_epochs = 1
   config.polyak_decay = 0.999
@@ -43,13 +43,13 @@ def get_config():
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'adam'
-  config.optimizer.learning_rate = 3e-4
+  config.optimizer.learning_rate = 1e-4
 
   # Model.
   config.model = ConfigDict()
   config.model.hidden_size = 512
   config.model.stage = 'encoder_decoder'
-  config.model.resolution = [64, 64]
+  config.model.resolution = 128
   config.model.name = 'coltran_core'
 
   # encoder
