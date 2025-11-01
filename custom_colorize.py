@@ -116,7 +116,7 @@ config_flags.DEFINE_config_file(
     help_string='Training configuration file.')
 FLAGS = flags.FLAGS
 
-def create_grayscale_dataset_from_images(image_dir, batch_size):
+def create_grayscale_dataset_from_images(image_dir, batch_size, upsampler_spatial_resolution=256 ,downsample_res=64):
   """Creates a dataset of grayscale images from the input image directory."""
   def load_and_preprocess_image(path, child_path):
     image_str = tf.io.read_file(path)
@@ -125,10 +125,10 @@ def create_grayscale_dataset_from_images(image_dir, batch_size):
     image = tf.image.decode_image(image_str, channels=num_channels)
 
     # Central crop to square and resize to 256x256.
-    image = datasets.resize_to_square(image, resolution=256, train=False)
+    image = datasets.resize_to_square(image, resolution=upsampler_spatial_resolution, train=False)
 
     # Resize to a low resolution image.
-    image_64 = datasets_utils.change_resolution(image, res=64)
+    image_64 = datasets_utils.change_resolution(image, res=downsample_res)
     # image_64=image
     if FLAGS.mode == 'recolorize':
       image = tf.image.rgb_to_grayscale(image)
@@ -250,13 +250,14 @@ def main(_):
     gen_dataset = gen_dataset.batch(batch_size)
     gen_dataset_iter = iter(gen_dataset)
   else:
-      captions = FLAGS.captions
-      caption_list = captions.split(sep="|")
-      print(f"caption_list:{caption_list}")
-      text_embedding = text_embedded(caption_list, batch_size)
+    if FLAGS.captions is not None:
+        captions = FLAGS.captions
+        caption_list = captions.split(sep="|")
+        print(f"caption_list:{caption_list}")
+        text_embedding = text_embedded(caption_list, batch_size)
 
 
-  dataset = create_grayscale_dataset_from_images(FLAGS.img_dir, batch_size)
+  dataset = create_grayscale_dataset_from_images(FLAGS.img_dir, batch_size,upsampler_spatial_resolution=config.upsampler_spatial_resolution ,downsample_res=config.downsample_res)
   dataset_iter = iter(dataset)
 
   model, optimizer, ema = build_model(config)
@@ -278,14 +279,18 @@ def main(_):
 
     if model_name == 'coltran_core':
       # visualizer.visualize_coltran_stage(gray_64,"grayscale_low")
-      out = model.sample(gray_64,captions=text_embedding ,mode='sample')
-      samples = out['auto_sample']
+      if FLAGS.captions is not None:
+          out = model.sample(gray_64,captions=text_embedding ,mode='sample')
+          samples = out['auto_sample']
+      else:
+          out = model.sample(gray_64, mode='sample')
+          samples = out['auto_sample']
     elif model_name == 'color_upsampler':
       prev_gen = base_utils.convert_bits(prev_gen, n_bits_in=8, n_bits_out=3)
       out = model.sample(bit_cond=prev_gen, gray_cond=gray_64)
       samples = out['bit_up_argmax']
     else:
-      prev_gen = datasets_utils.change_resolution(prev_gen, 256)
+      prev_gen = datasets_utils.change_resolution(prev_gen, config.upsampler_spatial_resolution)
       out = model.sample(gray_cond=gray, inputs=prev_gen, mode='argmax')
       samples = out['high_res_argmax']
 

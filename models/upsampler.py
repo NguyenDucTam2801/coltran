@@ -153,7 +153,7 @@ class ColorUpsampler(tf.keras.Model):
     return self.call(
         inputs=inputs, inputs_slice=inputs_slice, channel_index=channel_index)
 
-  def loss(self, targets, logits, train_config, training, aux_output=None):
+  def compute_loss(self, targets, logits, train_config, training, aux_output=None):
     is_downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
     if is_downsample and training:
@@ -271,7 +271,7 @@ class SpatialUpsampler(tf.keras.Model):
   def metric_keys(self):
     return []
 
-  def loss(self, targets, logits, train_config, training, aux_output=None):
+  def compute_loss(self, targets, logits, train_config, training, aux_output=None):
     if training:
       labels = targets['targets_slice']
     else:

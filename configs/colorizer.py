@@ -24,7 +24,8 @@ def get_config():
   # Data.
   config.dataset = 'custom'
   config.downsample = True
-  config.downsample_res = 128
+  config.downsample_res = 64
+  config.upsampler_spatial_resolution=256
   config.resolution = [256, 256]
 
   # Training.
@@ -49,7 +50,7 @@ def get_config():
   config.model = ConfigDict()
   config.model.hidden_size = 512
   config.model.stage = 'encoder_decoder'
-  config.model.resolution = 128
+  config.model.resolution = 64
   config.model.name = 'coltran_core'
 
   # encoder
@@ -64,7 +65,7 @@ def get_config():
   config.model.decoder = ConfigDict()
   config.model.decoder.ff_size = 512
   config.model.decoder.hidden_size = 512
-  config.model.decoder.resolution = [128, 128]
+  config.model.decoder.resolution = [64, 64]
   config.model.decoder.num_heads = 4
   config.model.decoder.num_inner_layers = 2
   config.model.decoder.num_outer_layers = 2

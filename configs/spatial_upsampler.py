@@ -25,6 +25,7 @@ def get_config():
   config.dataset = 'imagenet'
   config.downsample = True
   config.downsample_res = 64
+  config.upsampler_spatial_resolution=256
   config.resolution = [256, 256]
   config.random_channel = True
 
